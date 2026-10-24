@@ -22,6 +22,7 @@ create table if not exists court (
   kind text not null default 'techada',
   ord int not null default 0
 );
+alter table court add column if not exists active boolean not null default true;
 create table if not exists player (
   id text primary key default gen_random_uuid()::text,
   club_id text not null references club(id) on delete cascade,

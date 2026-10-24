@@ -11,7 +11,7 @@ export async function createBooking(input: { date: string; start: string; courtI
   const today = nowAR().date;
   if (input.date < today || input.date > addDays(today, 14)) return { ok: false as const, msg: "Se puede reservar desde hoy hasta 2 semanas." };
   if (!club.open_times.includes(input.start) || minutesUntil(input.date, input.start) < 0) return { ok: false as const, msg: "Ese horario ya pasó." };
-  const court = await one("select id from court where id=$1 and club_id=$2", [input.courtId, club.id]); if (!court) return { ok: false as const, msg: "Cancha inválida." };
+  const court = await one("select id from court where id=$1 and club_id=$2 and active", [input.courtId, club.id]); if (!court) return { ok: false as const, msg: "Cancha inválida." };
   try {
     const id = await tx(async c => {
       const p = (await c.query("insert into player (club_id,name,phone) values ($1,$2,$3) on conflict (club_id,phone) do update set name=excluded.name returning id", [club.id, name, phone])).rows[0];

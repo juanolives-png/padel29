@@ -15,7 +15,7 @@ export async function getClub(): Promise<Club> {
   if (!c) throw new Error("No hay club cargado. Corré npm run migrate.");
   return c;
 }
-export const getCourts = (clubId: string) => q<Court>("select id,name,kind,ord from court where club_id=$1 order by ord", [clubId]);
+export const getCourts = (clubId: string) => q<Court>("select id,name,kind,ord from court where club_id=$1 and active order by ord", [clubId]);
 export const getProducts = (clubId: string, all = false) => q<Product>(`select * from product where club_id=$1 ${all ? "" : "and active"} order by category, name`, [clubId]);
 export const getPlans = (clubId: string) => q<Plan>("select * from plan where club_id=$1 order by ord", [clubId]);
 

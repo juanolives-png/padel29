@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveClub, saveCourts } from "../../actions";
+import { deleteCourt, saveClub, saveCourts } from "../../actions";
 import { useToast } from "@/components/Toast";
 export default function ConfigClient({ club, courts }: { club: any; courts: { id: string; name: string; kind: string }[] }) {
   const router = useRouter(); const toast = useToast(); const [pending, start] = useTransition();
@@ -26,7 +26,14 @@ export default function ConfigClient({ club, courts }: { club: any; courts: { id
     <form className="card stack" onSubmit={e => { e.preventDefault(); start(async () => { const r = await saveCourts(cs); toast.show(r.msg, !r.ok); router.refresh(); }); }}>
       <h3 style={{ margin: 0 }}>Canchas</h3>
       {cs.map((x, i) => <div key={x.id || i} className="row"><input className="input" style={{ flex: 1 }} value={x.name} onChange={e => setCs(cs.map((y, j) => j === i ? { ...y, name: e.target.value } : y))} aria-label={`Nombre cancha ${i + 1}`} />
-        <select className="input" style={{ width: 160 }} value={x.kind} onChange={e => setCs(cs.map((y, j) => j === i ? { ...y, kind: e.target.value } : y))} aria-label="Tipo"><option value="techada">Techada</option><option value="panoramica">Panorámica</option><option value="aire">Al aire libre</option></select></div>)}
+        <select className="input" style={{ width: 160 }} value={x.kind} onChange={e => setCs(cs.map((y, j) => j === i ? { ...y, kind: e.target.value } : y))} aria-label="Tipo"><option value="techada">Techada</option><option value="panoramica">Panorámica</option><option value="aire">Al aire libre</option></select>
+        <button type="button" className="xbtn" title="Quitar cancha" aria-label={`Quitar ${x.name}`} disabled={pending || cs.length <= 1} onClick={() => {
+          if (!x.id) { setCs(cs.filter((_, j) => j !== i)); return; }
+          if (!confirm(`¿Quitar ${x.name}?`)) return;
+          start(async () => {
+            let r = await deleteCourt(x.id!);
+            if (!r.ok && r.pending > 0 && confirm(`${x.name} tiene ${r.pending} turno${r.pending > 1 ? "s" : ""} desde hoy. ¿Cancelarlos y quitar la cancha igual?`)) r = await deleteCourt(x.id!, true);
+            toast.show(r.msg, !r.ok); if (r.ok) { setCs(cs.filter((_, j) => j !== i)); router.refresh(); } }); }}>🗑</button></div>)}
       <button type="button" className="btn ghost sm" onClick={() => setCs([...cs, { name: `Cancha ${cs.length + 1}`, kind: "techada" }])}>+ Agregar cancha</button>
       <button className="btn" disabled={pending}>Guardar canchas</button>
     </form>{toast.node}

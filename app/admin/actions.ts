@@ -260,6 +260,19 @@ export async function saveCourts(courts: { id?: string; name: string; kind: stri
   revalidatePath("/", "layout"); return ok("Canchas guardadas");
 }
 
+/** Quita una cancha. Si tiene turnos por venir no deja; si tuvo turnos se oculta (para no perder la historia). */
+export async function deleteCourt(id: string, force = false) {
+  await requireAdmin(); const club = await getClub();
+  const today = nowAR().date;
+  const fut = await one<{ n: number }>("select count(*)::int as n from booking where court_id=$1 and club_id=$2 and status<>'cancelled' and date >= $3", [id, club.id, today]);
+  if (fut && fut.n > 0 && !force) return { ok: false as const, msg: `Esa cancha tiene ${fut.n} turno${fut.n > 1 ? "s" : ""} desde hoy.`, pending: fut.n };
+  if (fut && fut.n > 0) await q("update booking set status='cancelled' where court_id=$1 and club_id=$2 and status<>'cancelled' and date >= $3", [id, club.id, today]);
+  const any = await one<{ n: number }>("select count(*)::int as n from booking where court_id=$1", [id]);
+  if (any && any.n > 0) await q("update court set active=false where id=$1 and club_id=$2", [id, club.id]);
+  else await q("delete from court where id=$1 and club_id=$2", [id, club.id]);
+  revalidatePath("/", "layout"); return { ok: true as const, msg: fut && fut.n > 0 ? `Cancha eliminada y ${fut.n} turnos cancelados` : "Cancha eliminada", pending: 0 };
+}
+
 export async function loadSocio(playerId: string) {
   await requireAdmin();
   const p = await one("select * from player where id=$1", [playerId]); if (!p) return null;
