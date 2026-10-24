@@ -8,7 +8,7 @@ import { fmt } from "@/lib/time";
 const METHODS = ["Efectivo", "Transferencia", "QR Mercado Pago"];
 const SHORT: Record<string, string> = { Efectivo: "Efectivo", Transferencia: "Transferencia", "QR Mercado Pago": "QR Mercado Pago" };
 const ICON: Record<string, string> = { Efectivo: "💵", Transferencia: "🏦", "QR Mercado Pago": "📱" };
-const CONCEPT: Record<string, [string, string]> = { turno: ["Turno", "🎾"], bar: ["Bar", "🥤"], plan: ["29club", "⭐"], sena: ["Seña", "📌"], ingreso: ["Ingreso", "➕"], gasto: ["Gasto", "🧾"], retiro: ["Retiro", "↩️"] };
+const CONCEPT: Record<string, [string, string]> = { cuenta: ["Cuenta corriente", "👛"], turno: ["Turno", "🎾"], bar: ["Bar", "🥤"], plan: ["29club", "⭐"], sena: ["Seña", "📌"], ingreso: ["Ingreso", "➕"], gasto: ["Gasto", "🧾"], retiro: ["Retiro", "↩️"] };
 const BILLS = [20000, 10000, 2000, 1000, 500, 200, 100];
 const hm = (iso: string) => new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" });
 const num = (s: string) => Number(String(s).replace(/\D/g, "")) || 0;
@@ -92,7 +92,7 @@ export default function CajaClient({ date, label, clubName, d, closes }: { date:
       <div className="stack" style={{ gap: 18 }}>
         <section className="card" aria-label="Por concepto"><h3>Por concepto</h3>
           {Object.keys(t.byConcept).length ? <div className="concepts">{Object.entries(t.byConcept).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([k, v]) => { const out = ["gasto", "retiro"].includes(k);
-            return <div key={k}><span><span aria-hidden>{CONCEPT[k]?.[1]}</span> {CONCEPT[k]?.[0] || k}</span><b style={{ color: out ? "var(--bad)" : undefined }}>{out ? "−" : ""}{fmt(v as number)}</b></div>; })}</div>
+            return <div key={k}><span><span aria-hidden>{CONCEPT[k]?.[1]}</span> {CONCEPT[k]?.[0] || k}</span><b style={{ color: out || (v as number) < 0 ? "var(--bad)" : undefined }}>{out || (v as number) < 0 ? "−" : ""}{fmt(Math.abs(v as number))}</b></div>; })}</div>
             : <p className="muted small" style={{ margin: 0 }}>Todavía no hay movimientos.</p>}
         </section>
         <section className="card stack" style={{ gap: 12 }} aria-label="Gastos y retiros">

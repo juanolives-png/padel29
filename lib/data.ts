@@ -27,12 +27,12 @@ export async function getDay(clubId: string, date: string): Promise<SlotBooking[
   const ids = bs.map(b => b.id);
   const [pls, lines, pays] = await Promise.all([
     q("select booking_id, idx, name, pass_used, pass_kind from booking_player where booking_id = any($1)", [ids]),
-    q("select c.booking_id, c.id, c.qty, c.unit_price, c.player_idx, p.name, p.emoji from consumption c join product p on p.id=c.product_id where c.booking_id = any($1)", [ids]),
+    q("select c.booking_id, c.id, c.qty, c.unit_price, c.player_idx, c.shares, p.name, p.emoji from consumption c join product p on p.id=c.product_id where c.booking_id = any($1)", [ids]),
     q("select booking_id, player_idx, amount from payment where booking_id = any($1)", [ids])]);
   return bs.map(b => {
     const a = computeAccount({ courtPrice: b.court_price, senaPaid: b.sena_paid, senaMode: b.sena_mode,
       players: pls.filter(p => p.booking_id === b.id).map(p => ({ idx: p.idx, name: p.name, passUsed: p.pass_used, passKind: p.pass_kind })),
-      lines: lines.filter(l => l.booking_id === b.id).map(l => ({ id: l.id, qty: l.qty, unitPrice: l.unit_price, playerIdx: l.player_idx, name: l.name, emoji: l.emoji })),
+      lines: lines.filter(l => l.booking_id === b.id).map(l => ({ id: l.id, qty: l.qty, unitPrice: l.unit_price, playerIdx: l.player_idx, name: l.name, emoji: l.emoji, shares: l.shares })),
       payments: pays.filter(p => p.booking_id === b.id).map(p => ({ playerIdx: p.player_idx, amount: p.amount })) });
     const bl = lines.some(l => l.booking_id === b.id), bp = pays.some(p => p.booking_id === b.id);
     return { id: b.id, court_id: b.court_id, start: b.start, source: b.source, status: b.status, holder_name: b.holder_name, sena_paid: b.sena_paid, falta: a.falta, settled: a.settled,
@@ -46,7 +46,7 @@ export async function getBookingDetail(id: string) {
   if (!b) return null;
   const [players, lines, payments] = await Promise.all([
     q("select bp.idx, bp.name, bp.player_id, bp.pass_used, bp.pass_kind, bp.pass_sub_id, p.phone from booking_player bp left join player p on p.id=bp.player_id where booking_id=$1 order by idx", [id]),
-    q("select c.id, c.qty, c.unit_price, c.player_idx, c.created_at, p.name, p.emoji from consumption c join product p on p.id=c.product_id where booking_id=$1 order by c.created_at", [id]),
+    q("select c.id, c.qty, c.unit_price, c.player_idx, c.shares, c.created_at, p.name, p.emoji from consumption c join product p on p.id=c.product_id where booking_id=$1 order by c.created_at", [id]),
     q("select id, player_idx, amount, method, created_at from payment where booking_id=$1 order by created_at", [id])]);
   // socios con pases activos entre los jugadores
   const pids = players.map(p => p.player_id).filter(Boolean);
@@ -54,9 +54,12 @@ export async function getBookingDetail(id: string) {
     where s.player_id = any($1) and s.expires_at > now() and s.passes_left > 0 order by s.expires_at`, [pids]) : [];
   const acct = computeAccount({ courtPrice: b.court_price, senaPaid: b.sena_paid, senaMode: b.sena_mode,
     players: players.map(p => ({ idx: p.idx, name: p.name, passUsed: p.pass_used, passKind: p.pass_kind })),
-    lines: lines.map(l => ({ id: l.id, qty: l.qty, unitPrice: l.unit_price, playerIdx: l.player_idx, name: l.name, emoji: l.emoji })),
+    lines: lines.map(l => ({ id: l.id, qty: l.qty, unitPrice: l.unit_price, playerIdx: l.player_idx, name: l.name, emoji: l.emoji, shares: l.shares })),
     payments: payments.map(p => ({ playerIdx: p.player_idx, amount: p.amount })) });
-  return JSON.parse(JSON.stringify({ booking: b, players, lines, payments, subs, acct }));
+  // saldo de cuenta corriente de cada jugador vinculado (+ a favor, − debe)
+  const bal = pids.length ? await q<{ player_id: string; s: number }>("select player_id, sum(amount)::int as s from account_move where player_id = any($1) group by player_id", [pids]) : [];
+  const balances = Object.fromEntries(bal.map(x => [x.player_id, x.s]));
+  return JSON.parse(JSON.stringify({ booking: b, players, lines, payments, subs, acct, balances }));
 }
 
 export async function getSubsForPlayer(playerId: string) {

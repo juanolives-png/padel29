@@ -184,3 +184,19 @@ create table if not exists cash_close (
   closed_at timestamptz not null default now(),
   unique (club_id, date)
 );
+
+-- consumos de la mesa pagados por partes: { "idx del jugador": monto }
+alter table consumption add column if not exists shares jsonb not null default '{}';
+-- cuenta corriente de cada jugador: + a favor del jugador, − lo que debe
+create table if not exists account_move (
+  id text primary key default gen_random_uuid()::text,
+  club_id text not null references club(id) on delete cascade,
+  player_id text not null references player(id) on delete cascade,
+  amount int not null,
+  kind text not null,              -- a_favor | uso_saldo | deuda | pago_deuda | carga | devolucion
+  method text not null default '',
+  booking_id text references booking(id) on delete set null,
+  note text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists account_move_player on account_move (player_id);

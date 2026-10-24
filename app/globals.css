@@ -489,3 +489,41 @@ fieldset.tset legend { font-size: 12px; font-weight: 700; letter-spacing: .08em;
 .co-total { display: flex; justify-content: space-between; align-items: baseline; background: var(--pri); color: #fff; border-radius: 14px; padding: 12px 16px; }
 .co-total span { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; font-weight: 700; }
 .co-total b { font-family: var(--f-head); font-size: 38px; color: var(--acc); font-variant-numeric: tabular-nums; }
+
+/* cobro: partes, medio de pago, vuelto y cuenta corriente */
+.balpill { justify-self: start; display: inline-block; font-weight: 700; font-size: 13.5px; padding: 6px 12px; border-radius: 99px; }
+.balpill.sm { font-size: 12px; padding: 3px 10px; }
+.balpill.ok { background: var(--ok-bg); color: var(--ok); }
+.balpill.bad { background: #fbe4e2; color: var(--bad); }
+.co-item2 { border: 2px solid var(--line); border-radius: 14px; padding: 8px 10px; display: grid; gap: 8px; }
+.co-item2.on { border-color: var(--pri); background: #f3f8d8; }
+.co-top { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.co-top .em { font-size: 26px; text-align: center; }
+.co-top .nm { font-weight: 700; }
+.co-top small { display: block; font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.co-top .amt { font-family: var(--f-head); font-size: 20px; font-variant-numeric: tabular-nums; }
+.co-ctl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.co-ctl .qty { display: inline-flex; align-items: center; gap: 6px; }
+.co-ctl .qty button { width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); font-size: 18px; font-weight: 700; }
+.co-ctl .qty b { min-width: 18px; text-align: center; font-size: 16px; }
+.co-ctl .parts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.co-ctl .chip { padding: 6px 12px; }
+.paym { display: flex; gap: 6px; flex-wrap: wrap; }
+.paym .chip { padding: 9px 14px; font-size: 14.5px; }
+.cash { display: grid; gap: 10px; background: var(--soft); border-radius: 14px; padding: 12px; }
+.vuelto { display: flex; justify-content: space-between; align-items: baseline; background: var(--ok-bg); color: var(--ok); border-radius: 12px; padding: 10px 14px; font-weight: 700; }
+.vuelto b { font-family: var(--f-head); font-size: 30px; }
+.vuelto.debe { background: var(--warn-bg); color: var(--warn); }
+.checkout { max-height: calc(100dvh - 24px); overflow-y: auto; }
+
+/* cuentas corrientes */
+.acrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; border: 1.5px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 12px; }
+.acrow.on { border-color: var(--pri); background: var(--soft); }
+.acrow small { display: block; color: var(--muted); font-size: 12.5px; }
+.acrow .bal-pos, .accbal.bal-pos b { color: var(--ok); }
+.acrow .bal-neg, .accbal.bal-neg b { color: var(--bad); }
+.accbal { display: grid; text-align: right; }
+.accbal span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.accbal b { font-family: var(--f-head); font-size: 32px; font-variant-numeric: tabular-nums; }
+.acrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; min-width: 0; }
+.acrow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

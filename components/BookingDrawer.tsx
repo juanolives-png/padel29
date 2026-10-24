@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import ProductPicker, { type P } from "./ProductPicker";
-import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, payPlayer, payWithItems, splitPool, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass } from "@/app/admin/actions";
+import PayModal from "./PayModal";
+import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, cobrar as cobrarAction, splitPool, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass } from "@/app/admin/actions";
 import { fmt, dayLabel } from "@/lib/time";
 import { passFor } from "@/lib/club29";
 
@@ -17,7 +18,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
   const [target, setTarget] = useState<number[]>([]); const [phones, setPhones] = useState<Record<number, string>>({}); const [linking, setLinking] = useState<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false); const [showWa, setShowWa] = useState(false);
   // cobro a una persona: qué se lleva de la mesa
-  const [co, setCo] = useState<{ idx: number; own: boolean; takes: Record<string, number> } | null>(null);
+  const [co, setCo] = useState<number | "all" | null>(null);
   const [pending, start] = useTransition();
   const reload = useCallback(async () => { const r = await loadBooking(id); setD(r); }, [id]);
   useEffect(() => { reload(); }, [reload]);
@@ -30,7 +31,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
   const waTxt = `Cuenta del turno · ${b.court_name} ${dayLabel(b.date)} ${b.start}\n` + d.players.map((p: any, i: number) => `• ${p.name}: ${a.due[i] > 0 ? "debe " + fmt(a.due[i]) : "al día"}`).join("\n") + (a.pool > 0 ? `\n• En la mesa, sin repartir: ${fmt(a.pool)}` : "") + "\nCada uno puede pagar su parte en el club o por transferencia.";
   const forTxt = target.length === 0 ? "Queda en la mesa: al cobrar elegís quién lo paga." : target.length === 1 ? `Va a la cuenta de ${d.players.find((p: any) => p.idx === target[0])?.name}.` : `Se divide entre ${target.length}.`;
   const owing = d.players.filter((_: any, i: number) => a.due[i] > 0);
-  const cobrar = (idx: number) => { const i = d.players.findIndex((p: any) => p.idx === idx); if (a.pool > 0) setCo({ idx, own: a.due[i] > 0, takes: {} }); else run(() => payPlayer(id, idx, method)); };
+  const cobrar = (idx: number) => setCo(idx);
 
   return shell(<>
     <header className="sheet-head">
@@ -58,9 +59,8 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
         {a.pool > 0 && <div className="mesa">
           <div className="between" style={{ gap: 8 }}><span><b>🧺 En la mesa · {fmt(a.pool)}</b><small>Todavía no es de nadie. Al cobrarle a alguien, tocás lo que paga.</small></span>
             <button className="btn sm ghost" disabled={pending} onClick={() => run(() => splitPool(id))}>Repartir entre {owing.length && owing.length < n ? `los ${owing.length} que faltan` : `los ${n}`}</button></div>
-          <div className="mesa-items">{a.poolLines.map((l: any) => <span key={l.id}>{l.emoji} {l.qty > 1 ? l.qty + " " : ""}{l.name}</span>)}</div>
+          <div className="mesa-items">{a.poolLines.map((l: any) => <span key={l.id}>{l.emoji} {l.qty > 1 ? l.qty + " " : ""}{l.name}{l.taken > 0 ? ` · quedan ${fmt(l.left)}` : ""}</span>)}</div>
         </div>}
-        <div className="row" style={{ gap: 8 }}><span className="lbl">Cobrar con</span><div className="chips">{METHODS.map(m => <button key={m} className="chip" aria-pressed={m === method} onClick={() => setMethod(m)}>{m === "QR Mercado Pago" ? "QR MP" : m}</button>)}</div></div>
 
         <div className="players">{d.players.map((p: any, i: number) => {
           const due = a.due[i], sub = subFor(p.player_id);
@@ -72,6 +72,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
               {sub && <span className={"pill " + String(sub.plan_name).toLowerCase()}>{sub.plan_name}</span>}
             </div>
             {due > 0 ? <div className="due">{fmt(due)}</div> : <div className="due okc">{due < 0 ? "A favor " + fmt(-due) : "Al día ✓"}</div>}
+            {p.player_id && d.balances?.[p.player_id] ? <span className={"balpill sm " + (d.balances[p.player_id] > 0 ? "ok" : "bad")}>{d.balances[p.player_id] > 0 ? `👛 ${fmt(d.balances[p.player_id])} a favor` : `👛 debe ${fmt(-d.balances[p.player_id])} de antes`}</span> : null}
             <div className="det">{a.det[i].map(([l, v]: [string, number], k: number) => <span key={k}><span>{l}</span><span>{fmt(v)}</span></span>)}{a.paid[i] > 0 && <span><span>Pagó</span><span>−{fmt(a.paid[i])}</span></span>}</div>
             {p.pass_used > 0 && <div className="row small" style={{ gap: 6 }}><span className="pill acc">{PASSK[p.pass_kind] || "Pase"}</span><button className="linkbtn" onClick={() => run(() => undoPass(id, p.idx))}>deshacer</button></div>}
             {sub && !(p.pass_used > 0) && (pf ? <button className="btn sm dark" onClick={() => run(() => applyPass(id, p.idx, sub.id))}>Usar {pf.amount === 0.5 ? "½ pase" : "pase"} · le quedan {Number(sub.passes_left).toLocaleString("es-AR")}</button> : <span className="small muted">Sin pases disponibles</span>)}
@@ -84,7 +85,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
             {(due > 0 || a.pool > 0) && <button className="btn" onClick={() => cobrar(p.idx)} disabled={pending}>{due > 0 ? `Cobrar ${fmt(due)}${a.pool > 0 ? " + mesa" : ""}` : "Cobrar de la mesa"}</button>}
           </div>; })}</div>
 
-        {a.falta > 0 && <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} onClick={() => run(() => payAll(id, method))} disabled={pending}>Cobrar todo · {fmt(a.falta)}</button>}
+        {a.falta > 0 && <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} onClick={() => setCo("all")} disabled={pending}>Cobrar todo · {fmt(a.falta)}</button>}
 
         <details className="more">
           <summary>Seña, movimientos y cancelación</summary>
@@ -92,7 +93,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
             <div className="row" style={{ justifyContent: "space-between" }}>
               {b.sena_paid > 0 ? <><span className="small">Seña <b>{fmt(b.sena_paid)}</b> de {d.players[0]?.name}. Se descuenta:</span>
                 <div className="chips"><button className="chip" aria-pressed={b.sena_mode === "total"} onClick={() => run(() => setSena(id, b.sena_paid, "total"))}>entre todos</button><button className="chip" aria-pressed={b.sena_mode === "reserva"} onClick={() => run(() => setSena(id, b.sena_paid, "reserva"))}>a {d.players[0]?.name}</button></div></>
-                : <><span className="small muted">Sin seña.</span><button className="btn sm ghost" onClick={() => run(() => setSena(id, senaDefault, "total", method))}>Registrar seña de {fmt(senaDefault)} · {method === "QR Mercado Pago" ? "QR MP" : method}</button></>}
+                : <><span className="small muted">Sin seña.</span><div className="row" style={{ gap: 6 }}><select className="input" style={{ width: "auto", padding: "6px 8px" }} value={method} onChange={e => setMethod(e.target.value)} aria-label="Medio de la seña">{METHODS.map(m => <option key={m}>{m}</option>)}</select><button className="btn sm ghost" onClick={() => run(() => setSena(id, senaDefault, "total", method))}>Registrar seña de {fmt(senaDefault)}</button></div></>}
             </div>
             {(b.sena_paid > 0 || d.payments.length > 0) && <div className="moves">
               {b.sena_paid > 0 && <span><b>Seña {fmt(b.sena_paid)}</b> · {d.players[0]?.name}</span>}
@@ -112,34 +113,19 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
         <p className="small muted" style={{ margin: "-8px 0 0" }}>{forTxt}</p>
         <ProductPicker products={products} onAdd={pr => run(() => addConsumption(id, pr.id, 1, target))} />
         {d.lines.length > 0 && <div className="stack" style={{ gap: 6 }}><div className="lbl">Cargado</div>{d.lines.map((l: any) => {
-          const who = !l.player_idx.length ? "🧺 En la mesa" : l.player_idx.length === n ? "Todos" : l.player_idx.map((x: number) => d.players.find((p: any) => p.idx === x)?.name).join(", ");
+          const paidPart = Object.values(l.shares || {}).reduce((x: number, v: any) => x + Number(v), 0);
+          const who = !l.player_idx.length ? (paidPart >= l.qty * l.unit_price - 0.5 ? "Repartido" : paidPart > 0 ? `🧺 En la mesa · ya pagaron ${fmt(paidPart)}` : "🧺 En la mesa") : l.player_idx.length === n ? "Todos" : l.player_idx.map((x: number) => d.players.find((p: any) => p.idx === x)?.name).join(", ");
           return <div key={l.id} className="line2"><span className="em" aria-hidden>{l.emoji}</span><span>{l.name}{l.qty > 1 ? ` x${l.qty}` : ""}<small>{who}</small></span><span className="amt">{fmt(l.unit_price * l.qty)}</span><button aria-label="Quitar uno" onClick={() => run(() => removeConsumption(l.id))}>−</button></div>; })}</div>}
       </section>
     </div>
-    {co && (() => {
-      const i = d.players.findIndex((p: any) => p.idx === co.idx), pl = d.players[i];
-      const own = co.own ? Math.max(0, a.due[i]) : 0;
-      const items = a.poolLines.reduce((s: number, l: any) => s + (co.takes[l.id] || 0) * l.unitPrice, 0);
-      const tot = Math.round(own + items);
-      const setT = (l: any, v: number) => setCo({ ...co, takes: { ...co.takes, [l.id]: Math.max(0, Math.min(l.qty, v)) } });
-      return <div className="overlay center" style={{ zIndex: 70 }} onClick={e => { if (e.target === e.currentTarget) setCo(null); }}>
-        <div className="modal checkout" role="dialog" aria-modal="true" aria-label={`Cobrar a ${pl.name}`}>
-          <div className="between"><h3 style={{ margin: 0 }}>Cobrar a {pl.name}</h3><button className="xbtn" onClick={() => setCo(null)} aria-label="Cerrar">✕</button></div>
-          {a.due[i] > 0 && <label className={"co-own" + (co.own ? " on" : "")}><input type="checkbox" checked={co.own} onChange={e => setCo({ ...co, own: e.target.checked })} />
-            <span><b>Su parte</b><small>{a.det[i].filter(([, v]: [string, number]) => v > 0).map(([l]: [string, number]) => l.replace(/ [¼½⅓⅔¾].*$|\s\d+\/\d+$/, "")).join(" + ") || "Lo que ya tenía"}</small></span><b>{fmt(a.due[i])}</b></label>}
-          <div className="lbl">De la mesa · tocá lo que paga {pl.name}</div>
-          <div className="co-items">{a.poolLines.map((l: any) => { const t = co.takes[l.id] || 0;
-            return <div key={l.id} className={"co-item" + (t ? " on" : "")}>
-              <button className="co-add" onClick={() => setT(l, t + 1)} disabled={t >= l.qty} aria-label={`Sumar un ${l.name}`}><span className="em" aria-hidden>{l.emoji}</span><span>{l.name}<small>{fmt(l.unitPrice)} · hay {l.qty}</small></span></button>
-              <div className="qty"><button onClick={() => setT(l, t - 1)} disabled={!t} aria-label={`Uno menos de ${l.name}`}>−</button><b>{t}</b><button onClick={() => setT(l, t + 1)} disabled={t >= l.qty} aria-label={`Uno más de ${l.name}`}>+</button></div>
-              <button className="linkbtn" onClick={() => setT(l, t === l.qty ? 0 : l.qty)}>{t === l.qty ? "ninguno" : "todos"}</button>
-            </div>; })}</div>
-          <div className="co-total"><span>Total a cobrar</span><b>{fmt(tot)}</b></div>
-          <div className="chips">{METHODS.map(m => <button key={m} className="chip" aria-pressed={m === method} onClick={() => setMethod(m)}>{m === "QR Mercado Pago" ? "QR MP" : m}</button>)}</div>
-          <button className="btn block" style={{ padding: 16, fontSize: 17 }} disabled={pending || tot <= 0}
-            onClick={() => { const takes = Object.entries(co.takes).filter(([, q]) => q > 0).map(([lineId, qty]) => ({ lineId, qty })); setCo(null); run(() => payWithItems(id, co.idx, takes, co.own, method)); }}>Cobrar {fmt(tot)} · {method === "QR Mercado Pago" ? "QR MP" : method}</button>
-          <p className="small muted" style={{ margin: 0 }}>Lo que no toques queda en la mesa para los demás.</p>
-        </div></div>;
+    {co !== null && (() => {
+      if (co === "all") return <PayModal title="Cobrar todo lo que falta" own={a.falta} ownLabel={a.pool > 0 ? "Lo de la mesa se reparte entre los que faltan" : "Todos los que deben"} pool={[]} balance={null} linked allowAccount={false} pending={pending}
+        onClose={() => setCo(null)} onPay={r => { setCo(null); run(() => payAll(id, r.method)); if (r.received && r.received > a.falta) toast(`Vuelto ${fmt(r.received - a.falta)}`); }} />;
+      const i = d.players.findIndex((p: any) => p.idx === co), pl = d.players[i];
+      const lbl = a.det[i].filter(([, v]: [string, number]) => v > 0).map(([l]: [string, number]) => l).join(" + ") || "Lo que ya tenía";
+      return <PayModal title={`Cobrar a ${pl.name}`} own={Math.max(0, a.due[i])} ownLabel={lbl} pool={a.poolLines.map((l: any) => ({ id: l.id, name: l.name, emoji: l.emoji, unit: l.unitPrice, left: l.left }))}
+        balance={pl.player_id ? d.balances?.[pl.player_id] ?? 0 : null} linked={!!pl.player_id} allowAccount pending={pending} onClose={() => setCo(null)}
+        onPay={r => { setCo(null); run(() => cobrarAction({ bookingId: id, idx: pl.idx, ...r })); }} />;
     })()}
   </>);
 }

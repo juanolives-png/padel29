@@ -1,7 +1,7 @@
 export type AcctInput = {
   courtPrice: number; senaPaid: number; senaMode: string;
   players: { idx: number; name: string; passUsed: number; passKind: string }[];
-  lines: { id: string; qty: number; unitPrice: number; playerIdx: number[]; name: string; emoji: string }[];
+  lines: { id: string; qty: number; unitPrice: number; playerIdx: number[]; name: string; emoji: string; shares?: Record<string, number> }[];
   payments: { playerIdx: number; amount: number }[];
 };
 const FR: Record<string, string> = { "1/2": "½", "1/3": "⅓", "1/4": "¼", "2/3": "⅔", "3/4": "¾" };
@@ -20,9 +20,15 @@ export function computeAccount(b: AcctInput) {
     if (p.passUsed > 0) det[i].push([`Cancha ${frac(1, n)} · ${p.passUsed === 0.5 ? "medio pase" : "1 pase"} 29club`, 0]);
     else { owe[i] += share; det[i].push([`Cancha ${frac(1, n)}`, share]); }
   });
-  // consumos de la mesa: todavía sin dueño, se asignan cuando alguien los paga
-  const poolLines = b.lines.filter(l => !l.playerIdx.length);
-  const pool = poolLines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  // consumos de la mesa: sin dueño; cada jugador se lleva una parte (shares) al pagar
+  const poolLines = b.lines.filter(l => !l.playerIdx.length).map(l => {
+    const sh = l.shares || {}; const taken = Object.values(sh).reduce((s, v) => s + Number(v), 0);
+    Object.entries(sh).forEach(([k, v]) => { const i = players.findIndex(p => p.idx === Number(k)); if (i < 0 || !v) return;
+      const u = Number(v) / l.unitPrice; const lbl = Math.abs(u - Math.round(u)) < 0.001 ? (Math.round(u) > 1 ? ` x${Math.round(u)}` : "") : " (parte)";
+      owe[i] += Number(v); det[i].push([`${l.name}${lbl}`, Number(v)]); });
+    return { ...l, taken, left: Math.max(0, l.unitPrice * l.qty - taken) };
+  }).filter(l => l.left >= 1);
+  const pool = poolLines.reduce((s, l) => s + l.left, 0);
   b.lines.filter(l => l.playerIdx.length).forEach(l => {
     const each = (l.unitPrice * l.qty) / l.playerIdx.length;
     l.playerIdx.forEach(pi => { const i = players.findIndex(p => p.idx === pi); if (i < 0) return; owe[i] += each; det[i].push([`${l.name} ${frac(l.qty, l.playerIdx.length)}`.trim(), each]); });
