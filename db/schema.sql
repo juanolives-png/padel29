@@ -200,3 +200,31 @@ create table if not exists account_move (
   created_at timestamptz not null default now()
 );
 create index if not exists account_move_player on account_move (player_id);
+
+-- finanzas
+alter table product add column if not exists cost int;                 -- precio de costo (compra) por unidad
+alter table consumption add column if not exists unit_cost int;        -- costo al momento de la venta
+alter table club add column if not exists finance jsonb not null default '{}';  -- supuestos de la proyección
+create table if not exists stock_entry (
+  id text primary key default gen_random_uuid()::text,
+  club_id text not null references club(id) on delete cascade,
+  product_id text not null references product(id) on delete cascade,
+  qty int not null,
+  unit_cost int not null,
+  method text not null default 'Transferencia',
+  from_cash boolean not null default false,  -- se pagó con plata de la caja del día
+  supplier text not null default '',
+  created_at timestamptz not null default now()
+);
+create table if not exists expense (
+  id text primary key default gen_random_uuid()::text,
+  club_id text not null references club(id) on delete cascade,
+  date text not null,
+  category text not null,
+  detail text not null default '',
+  amount int not null,
+  method text not null default 'Transferencia',
+  fixed boolean not null default false,       -- gasto fijo mensual (alquiler, sueldos…)
+  created_at timestamptz not null default now()
+);
+create index if not exists expense_day on expense (club_id, date);

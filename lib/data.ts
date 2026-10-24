@@ -3,7 +3,7 @@ import { computeAccount } from "./account";
 
 export type Club = { id: string; slug: string; name: string; tagline: string; color_primary: string; color_accent: string; logo_url: string | null; whatsapp: string; slot_minutes: number; open_times: string[]; court_price: number; sena_amount: number; cancel_hours: number };
 export type Court = { id: string; name: string; kind: string; ord: number };
-export type Product = { id: string; name: string; emoji: string; category: string; price: number; stock: number | null; active: boolean; sold: number };
+export type Product = { id: string; name: string; emoji: string; category: string; price: number; cost: number | null; stock: number | null; active: boolean; sold: number };
 export type Plan = { id: string; name: string; price: number; passes: number; months: number; discount_pct: number; special_uses: number; early_uses: number; can_transfer: boolean; invite_uses: number; referral_pass: number; ord: number };
 
 export const KIND_LABEL: Record<string, string> = { techada: "techada", panoramica: "panorámica", aire: "al aire libre" };

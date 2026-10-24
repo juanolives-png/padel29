@@ -527,3 +527,54 @@ fieldset.tset legend { font-size: 12px; font-weight: 700; letter-spacing: .08em;
 .accbal b { font-family: var(--f-head); font-size: 32px; font-variant-numeric: tabular-nums; }
 .acrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; min-width: 0; }
 .acrow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* gráficos (paleta validada: --s1 ingresos/ganancia, --s2 egresos/pérdida) */
+:root { --s1: #2a78d6; --s2: #eb6834; }
+.vz { position: relative; display: grid; gap: 8px; }
+.vz svg { display: block; overflow: visible; }
+.vz-grid { stroke: var(--line); stroke-width: 1; }
+.vz-base { stroke: #b9c2bb; stroke-width: 1; }
+.vz-ax { font-size: 11px; fill: var(--muted); font-family: var(--f-body); }
+.vz g[tabindex]:focus { outline: none; }
+.vz g[tabindex]:hover path, .vz g[tabindex]:focus path { filter: brightness(1.08); }
+.vz-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.vz-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.vz-legend i, .vz-tr i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.vz-tip { position: absolute; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; pointer-events: none; z-index: 5; min-width: 150px; }
+.vz-tt { font-weight: 700; margin-bottom: 4px; color: var(--muted); }
+.vz-tr { display: flex; gap: 6px; align-items: center; }
+.vz-tr b { font-variant-numeric: tabular-nums; }
+.vz-tr span { color: var(--muted); }
+.hb { display: grid; gap: 8px; }
+.hb-row { display: grid; grid-template-columns: minmax(90px, 1.1fr) minmax(0, 1.4fr) auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.hb-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hb-track { height: 14px; display: block; }
+.hb-bar { display: block; height: 100%; border-radius: 0 4px 4px 0; }
+.hb-v { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hb-v small { color: var(--muted); margin-left: 6px; display: inline-block; min-width: 30px; }
+
+/* finanzas */
+.fin-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1000px) { .fin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpi.res.up { background: var(--ok-bg); border-color: transparent; }
+.kpi.res.up .l, .kpi.res.up .v { color: var(--ok); }
+.kpi.res.down { background: #fbe4e2; border-color: transparent; }
+.kpi.res.down .l, .kpi.res.down .v { color: var(--bad); }
+.fin-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+@media (max-width: 1000px) { .fin-grid { grid-template-columns: minmax(0, 1fr); } }
+.tbl.pl tr.sub td { font-weight: 800; background: var(--soft); }
+.tbl.pl tr.neg td:first-child { padding-left: 18px; color: var(--muted); }
+.tbl.pl tr.tot td { font-weight: 800; font-size: 16px; border-top: 2px solid var(--ink); }
+.assm { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.as { display: grid; gap: 4px; background: var(--soft); border-radius: 12px; padding: 8px 10px; border: 1.5px solid transparent; }
+.as.ch { border-color: var(--s1); background: #eef4fc; }
+.as > span:first-child { font-size: 12.5px; font-weight: 700; }
+.as-in { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1.5px solid var(--line); border-radius: 9px; padding: 0 8px; }
+.as-in input { border: 0; background: transparent; padding: 7px 0; width: 100%; min-width: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.as-in i { font-style: normal; color: var(--muted); font-size: 13px; }
+.as small { font-size: 11.5px; color: var(--muted); }
+.tbl.proy td, .tbl.proy th { white-space: nowrap; }
+.tbl.proy tr.tot td { font-weight: 800; border-top: 2px solid var(--ink); }
+.vz { min-width: 0; }
+.fin-grid > *, .fin-kpis > * { min-width: 0; }
+@media (max-width: 520px) { .fin-kpis { grid-template-columns: minmax(0, 1fr); } .hb-row { grid-template-columns: minmax(70px, 1fr) minmax(0, 1fr) auto; } }

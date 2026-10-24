@@ -3,7 +3,7 @@ import { getDay } from "./data";
 
 export const METHODS = ["Efectivo", "Transferencia", "QR Mercado Pago"] as const;
 export const SHORT: Record<string, string> = { Efectivo: "Efectivo", Transferencia: "Transferencia", "QR Mercado Pago": "QR MP" };
-export const CONCEPTS: Record<string, string> = { cuenta: "Cuentas corrientes", turno: "Turnos", bar: "Bar (mostrador)", plan: "Planes 29club", sena: "Señas", ingreso: "Otros ingresos", gasto: "Gastos", retiro: "Retiros" };
+export const CONCEPTS: Record<string, string> = { compra: "Compras de mercadería", cuenta: "Cuentas corrientes", turno: "Turnos", bar: "Bar (mostrador)", plan: "Planes 29club", sena: "Señas", ingreso: "Otros ingresos", gasto: "Gastos", retiro: "Retiros" };
 const DAY = "(created_at at time zone 'America/Argentina/Buenos_Aires')::date = $2::date";
 
 export type Move = { id: string; at: string; concept: string; detail: string; method: string; amount: number; sign: 1 | -1; ref?: string; removable?: boolean };
@@ -12,7 +12,7 @@ export type Totals = { in: number; out: number; byMethod: Record<string, { in: n
 
 /** Todo lo que entró y salió de la caja en un día (hora Argentina) */
 export async function getCajaDay(clubId: string, date: string) {
-  const [pays, sales, plans, senas, moves, accts, close, prevClose, day] = await Promise.all([
+  const [pays, sales, plans, senas, moves, accts, buys, close, prevClose, day] = await Promise.all([
     q(`select p.id, p.amount, p.method, p.created_at, bp.name, c.name as court, b.start, b.id as booking_id from payment p join booking b on b.id=p.booking_id
        join court c on c.id=b.court_id left join booking_player bp on bp.booking_id=b.id and bp.idx=p.player_idx where b.club_id=$1 and p.method = any($3) and (p.created_at at time zone 'America/Argentina/Buenos_Aires')::date = $2::date`, [clubId, date, METHODS]),
     q(`select id, total, method, items, created_at from counter_sale where club_id=$1 and ${DAY}`, [clubId, date]),
@@ -23,6 +23,8 @@ export async function getCajaDay(clubId: string, date: string) {
     q("select * from cash_move where club_id=$1 and date=$2 order by created_at", [clubId, date]),
     q(`select m.id, m.amount, m.kind, m.method, m.created_at, p.name from account_move m join player p on p.id=m.player_id
        where m.club_id=$1 and m.method = any($3) and ${DAY.replace("created_at", "m.created_at")}`, [clubId, date, METHODS]),
+    q(`select e.id, e.qty, e.unit_cost, e.method, e.supplier, e.created_at, p.name from stock_entry e join product p on p.id=e.product_id
+       where e.club_id=$1 and e.from_cash and ${DAY.replace("created_at", "e.created_at")}`, [clubId, date]),
     one<Close>("select * from cash_close where club_id=$1 and date=$2", [clubId, date]),
     one<Close>("select * from cash_close where club_id=$1 and date < $2 order by date desc limit 1", [clubId, date]),
     getDay(clubId, date)]);
@@ -33,6 +35,7 @@ export async function getCajaDay(clubId: string, date: string) {
     ...plans.map(s => ({ id: s.id, at: s.created_at, concept: "plan", detail: `Plan ${s.plan} · ${s.name}`, method: s.method, amount: s.price_paid, sign: 1 as const })),
     ...senas.map(b => ({ id: b.id, at: b.created_at, concept: "sena", detail: `${b.court} ${b.start}${b.date !== date ? " del " + b.date.slice(8) + "/" + b.date.slice(5, 7) : ""} · ${b.holder_name}`, method: b.sena_method, amount: b.sena_paid, sign: 1 as const, ref: b.id })),
     ...accts.map(m => ({ id: m.id, at: m.created_at, concept: "cuenta", detail: `${m.kind === "a_favor" ? "Vuelto que quedó a favor" : m.kind === "pago_deuda" ? "Pagó deuda" : m.kind === "carga" ? "Cargó saldo a favor" : "Devolución de saldo"} · ${m.name}`, method: m.method, amount: Math.abs(m.amount), sign: (m.amount >= 0 ? 1 : -1) as 1 | -1 })),
+    ...buys.map(e => ({ id: e.id, at: e.created_at, concept: "compra", detail: `${e.qty} ${e.name}${e.supplier ? " · " + e.supplier : ""}`, method: e.method, amount: e.qty * e.unit_cost, sign: -1 as const })),
     ...moves.filter(m => m.kind !== "apertura").map(m => ({ id: m.id, at: m.created_at, concept: m.kind, detail: m.note || CONCEPTS[m.kind], method: m.method, amount: m.amount, sign: (m.kind === "ingreso" ? 1 : -1) as 1 | -1, removable: true })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 

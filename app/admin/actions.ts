@@ -8,6 +8,7 @@ import { getBookingDetail, getClub } from "@/lib/data";
 import { passFor, POINTS, canTransferNow } from "@/lib/club29";
 import { minutesUntil, nowAR } from "@/lib/time";
 import { generate, type TConfig, type Pair } from "@/lib/tournament";
+import { EXPENSE_CATS } from "@/lib/finance";
 
 const ok = (msg = "Listo") => ({ ok: true as const, msg });
 const err = (msg: string) => ({ ok: false as const, msg });
@@ -79,7 +80,7 @@ export async function addConsumption(bookingId: string, productId: string, qty: 
   await tx(async c => {
     const ex = (await c.query("select id from consumption where booking_id=$1 and product_id=$2 and player_idx=$3::int[]", [bookingId, productId, idx])).rows[0];
     if (ex) await c.query("update consumption set qty=qty+$2 where id=$1", [ex.id, qty]);
-    else await c.query("insert into consumption (booking_id,product_id,qty,unit_price,player_idx) values ($1,$2,$3,$4,$5)", [bookingId, productId, qty, p.price, idx]);
+    else await c.query("insert into consumption (booking_id,product_id,qty,unit_price,player_idx,unit_cost) values ($1,$2,$3,$4,$5,$6)", [bookingId, productId, qty, p.price, idx, p.cost ?? null]);
     await c.query("update product set sold=sold+$2, stock=case when stock is null then null else stock-$2 end where id=$1", [productId, qty]);
   });
   done(); return ok(p.emoji + " " + p.name + " cargado");
@@ -304,7 +305,7 @@ export async function counterSale(items: { productId: string; qty: number }[], m
   await requireAdmin(); const club = await getClub(); if (!items.length) return err("El ticket está vacío.");
   const ps = await q("select * from product where id = any($1)", [items.map(i => i.productId)]);
   for (const it of items) { const p = ps.find(x => x.id === it.productId); if (p.stock != null && p.stock < it.qty) return err("Sin stock de " + p.name + "."); }
-  const lines = items.map(it => { const p = ps.find(x => x.id === it.productId); return { name: p.name, emoji: p.emoji, qty: it.qty, price: p.price }; });
+  const lines = items.map(it => { const p = ps.find(x => x.id === it.productId); return { productId: p.id, name: p.name, emoji: p.emoji, qty: it.qty, price: p.price, cost: p.cost ?? null }; });
   const total = lines.reduce((s, l) => s + l.qty * l.price, 0);
   await tx(async c => {
     await c.query("insert into counter_sale (club_id,total,method,items) values ($1,$2,$3,$4)", [club.id, total, method, JSON.stringify(lines)]);
@@ -316,11 +317,12 @@ export async function chargeToBooking(bookingId: string, items: { productId: str
   await requireAdmin(); for (const it of items) { const r = await addConsumption(bookingId, it.productId, it.qty, playerIdx); if (!r.ok) return r; }
   return ok("Cargado a la cuenta del turno");
 }
-export async function saveProduct(input: { id?: string; name: string; emoji: string; category: string; price: number; stock: number | null; active: boolean }) {
+export async function saveProduct(input: { id?: string; name: string; emoji: string; category: string; price: number; cost?: number | null; stock: number | null; active: boolean }) {
   await requireAdmin(); const club = await getClub();
-  if (!input.name.trim() || !(input.price > 0)) return err("Completá nombre y precio.");
-  if (input.id) await q("update product set name=$2, emoji=$3, category=$4, price=$5, stock=$6, active=$7 where id=$1", [input.id, input.name.trim(), input.emoji || "🛒", input.category, Math.round(input.price), input.stock, input.active]);
-  else await q("insert into product (club_id,name,emoji,category,price,stock,active) values ($1,$2,$3,$4,$5,$6,$7)", [club.id, input.name.trim(), input.emoji || "🛒", input.category, Math.round(input.price), input.stock, input.active]);
+  if (!input.name.trim() || !(input.price > 0)) return err("Completá nombre y precio de venta.");
+  const cost = input.cost == null || isNaN(Number(input.cost)) ? null : Math.max(0, Math.round(Number(input.cost)));
+  if (input.id) await q("update product set name=$2, emoji=$3, category=$4, price=$5, stock=$6, active=$7, cost=$8 where id=$1", [input.id, input.name.trim(), input.emoji || "🛒", input.category, Math.round(input.price), input.stock, input.active, cost]);
+  else await q("insert into product (club_id,name,emoji,category,price,stock,active,cost) values ($1,$2,$3,$4,$5,$6,$7,$8)", [club.id, input.name.trim(), input.emoji || "🛒", input.category, Math.round(input.price), input.stock, input.active, cost]);
   done(); return ok("Producto guardado");
 }
 
@@ -487,4 +489,61 @@ export async function closeDay(input: { date: string; counted: number; leftInBox
 export async function reopenDay(date: string) {
   await requireAdmin(); const club = await getClub();
   await q("delete from cash_close where club_id=$1 and date=$2", [club.id, date]); doneCaja(); return ok("Caja reabierta");
+}
+
+
+/* ---------- mercadería y finanzas ---------- */
+/** Entrada de mercadería: suma stock, actualiza el costo y registra la compra */
+export async function addStock(input: { productId: string; qty: number; unitCost: number; method: string; fromCash: boolean; supplier: string }) {
+  await requireAdmin(); const club = await getClub();
+  const qty = Math.round(Number(input.qty)), cost = Math.round(Number(input.unitCost));
+  if (!(qty > 0)) return err("Poné la cantidad que entró."); if (!(cost >= 0)) return err("Poné el costo por unidad.");
+  const p = await one("select * from product where id=$1 and club_id=$2", [input.productId, club.id]); if (!p) return err("Producto inexistente.");
+  await tx(async c => {
+    await c.query("update product set stock=coalesce(stock,0)+$2, cost=$3 where id=$1", [p.id, qty, cost]);
+    await c.query("insert into stock_entry (club_id,product_id,qty,unit_cost,method,from_cash,supplier) values ($1,$2,$3,$4,$5,$6,$7)", [club.id, p.id, qty, cost, input.method, !!input.fromCash, input.supplier.trim()]);
+  });
+  revalidatePath("/admin/bar", "layout"); revalidatePath("/admin/finanzas", "layout"); revalidatePath("/admin/caja");
+  return ok(`Entraron ${qty} ${p.name} · stock ${(p.stock ?? 0) + qty}`);
+}
+export async function saveExpense(input: { id?: string; date: string; category: string; detail: string; amount: number; method: string; fixed: boolean }) {
+  await requireAdmin(); const club = await getClub();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return err("Fecha inválida.");
+  const amt = Math.round(Number(input.amount)); if (!(amt > 0)) return err("Poné el importe.");
+  const cat = EXPENSE_CATS.includes(input.category) ? input.category : "Otros";
+  if (input.id) await q("update expense set date=$2, category=$3, detail=$4, amount=$5, method=$6, fixed=$7 where id=$1 and club_id=$8", [input.id, input.date, cat, input.detail.trim(), amt, input.method, !!input.fixed, club.id]);
+  else await q("insert into expense (club_id,date,category,detail,amount,method,fixed) values ($1,$2,$3,$4,$5,$6,$7)", [club.id, input.date, cat, input.detail.trim(), amt, input.method, !!input.fixed]);
+  revalidatePath("/admin/finanzas", "layout"); return ok("Gasto guardado");
+}
+export async function deleteExpense(id: string) {
+  await requireAdmin(); const club = await getClub(); await q("delete from expense where id=$1 and club_id=$2", [id, club.id]);
+  revalidatePath("/admin/finanzas", "layout"); return ok("Gasto borrado");
+}
+export async function importExpenses(rows: { date: string; category: string; detail: string; amount: number; fixed?: boolean }[]) {
+  await requireAdmin(); const club = await getClub();
+  const ok_ = rows.filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && Math.round(r.amount) > 0);
+  if (!ok_.length) return err("No hay filas válidas para importar.");
+  await tx(async c => { for (const r of ok_) await c.query("insert into expense (club_id,date,category,detail,amount,method,fixed) values ($1,$2,$3,$4,$5,'Transferencia',$6)", [club.id, r.date, EXPENSE_CATS.includes(r.category) ? r.category : "Otros", r.detail.trim(), Math.round(r.amount), !!r.fixed]); });
+  revalidatePath("/admin/finanzas", "layout"); return ok(`${ok_.length} gastos importados`);
+}
+export async function saveFinanceSettings(f: Record<string, number>) {
+  await requireAdmin(); const club = await getClub();
+  const clean = Object.fromEntries(Object.entries(f).filter(([, v]) => typeof v === "number" && isFinite(v)));
+  await q("update club set finance=$2 where id=$1", [club.id, JSON.stringify(clean)]); revalidatePath("/admin/finanzas", "layout"); return ok("Supuestos guardados");
+}
+/** Copia los gastos fijos del mes anterior al mes indicado (mismo día; si el mes es más corto, último día) */
+export async function copyFixedExpenses(ym: string) {
+  await requireAdmin(); const club = await getClub(); if (!/^\d{4}-\d{2}$/.test(ym)) return err("Mes inválido.");
+  const [y, m] = ym.split("-").map(Number); const prev = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const fx = await q("select * from expense where club_id=$1 and fixed and substr(date,1,7)=$2", [club.id, prev]);
+  if (!fx.length) return err("No hay gastos fijos en el mes anterior.");
+  const already = await q("select category, detail from expense where club_id=$1 and fixed and substr(date,1,7)=$2", [club.id, ym]);
+  let n = 0;
+  for (const e of fx) {
+    if (already.some(a => a.category === e.category && a.detail === e.detail)) continue;
+    const d = Math.min(Number(e.date.slice(8, 10)), last);
+    await q("insert into expense (club_id,date,category,detail,amount,method,fixed) values ($1,$2,$3,$4,$5,$6,true)", [club.id, `${ym}-${String(d).padStart(2, "0")}`, e.category, e.detail, e.amount, e.method]); n++;
+  }
+  revalidatePath("/admin/finanzas", "layout"); return n ? ok(`${n} gastos fijos copiados (revisá si cambió algún importe)`) : err("Ya estaban cargados.");
 }
