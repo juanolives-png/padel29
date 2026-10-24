@@ -154,3 +154,33 @@ create table if not exists tournament (
   results jsonb not null default '{"scores":{},"winners":{}}',
   created_at timestamptz not null default now()
 );
+
+-- cierre de caja
+alter table booking add column if not exists sena_method text not null default 'Transferencia';
+alter table booking add column if not exists sena_at timestamptz;
+create table if not exists cash_move (
+  id text primary key default gen_random_uuid()::text,
+  club_id text not null references club(id) on delete cascade,
+  date text not null,
+  kind text not null,              -- apertura | gasto | retiro | ingreso
+  amount int not null,
+  method text not null default 'Efectivo',
+  note text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists cash_move_day on cash_move (club_id, date);
+create table if not exists cash_close (
+  id text primary key default gen_random_uuid()::text,
+  club_id text not null references club(id) on delete cascade,
+  date text not null,
+  opening int not null,
+  expected int not null,
+  counted int not null,
+  diff int not null,
+  left_in_box int not null,
+  totals jsonb not null,
+  checks jsonb not null default '{}',
+  note text not null default '',
+  closed_at timestamptz not null default now(),
+  unique (club_id, date)
+);

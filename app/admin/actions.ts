@@ -110,8 +110,13 @@ export async function payAll(bookingId: string, method: string) {
   done(); return ok(`Cobrado $${s.toLocaleString("es-AR")} · ${method}`);
 }
 export async function undoPayment(paymentId: string) { await requireAdmin(); await q("delete from payment where id=$1", [paymentId]); done(); return ok("Pago anulado"); }
-export async function setSena(bookingId: string, amount: number, mode: string) {
-  await requireAdmin(); await q("update booking set sena_paid=$2, sena_mode=$3 where id=$1", [bookingId, Math.max(0, Math.round(amount)), mode === "reserva" ? "reserva" : "total"]); done(); return ok("Seña actualizada");
+export async function setSena(bookingId: string, amount: number, mode: string, method?: string) {
+  await requireAdmin(); const amt = Math.max(0, Math.round(amount));
+  // la fecha de la seña se guarda la primera vez que se registra (para la caja del día)
+  await q(`update booking set sena_paid=$2, sena_mode=$3, sena_method=coalesce($4, sena_method),
+    sena_at = case when $2 = 0 then null when sena_at is null or sena_paid = 0 then now() else sena_at end where id=$1`,
+    [bookingId, amt, mode === "reserva" ? "reserva" : "total", method || null]);
+  done(); return ok("Seña actualizada");
 }
 
 /* ---------- 29club en el turno ---------- */
@@ -281,4 +286,50 @@ export async function loadSocio(playerId: string) {
   const moves = subs.length ? await q("select m.*, b.date, b.start from pass_move m left join booking b on b.id=m.booking_id where m.subscription_id = any($1) order by m.created_at desc limit 60", [subs.map(s => s.id)]) : [];
   const pts = await q("select reason, sum(points)::int as pts, count(*)::int as n from points_move where player_id=$1 and created_at >= date_trunc('year', now()) group by reason", [playerId]);
   return JSON.parse(JSON.stringify({ player: p, subs, moves, pts }));
+}
+
+
+/* ---------- caja del día ---------- */
+const isDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+async function closedDay(clubId: string, date: string) { return !!(await one("select id from cash_close where club_id=$1 and date=$2", [clubId, date])); }
+const doneCaja = () => { revalidatePath("/admin/caja"); };
+
+export async function addCashMove(input: { date: string; kind: string; amount: number; method: string; note: string }) {
+  await requireAdmin(); const club = await getClub();
+  if (!isDate(input.date) || !["gasto", "retiro", "ingreso"].includes(input.kind)) return err("Dato inválido.");
+  const amt = Math.round(Number(input.amount)); if (!(amt > 0)) return err("Poné un importe.");
+  if (await closedDay(club.id, input.date)) return err("La caja de ese día está cerrada. Reabrila para cargar movimientos.");
+  await q("insert into cash_move (club_id,date,kind,amount,method,note) values ($1,$2,$3,$4,$5,$6)", [club.id, input.date, input.kind, amt, input.method || "Efectivo", input.note.trim()]);
+  doneCaja(); return ok(input.kind === "gasto" ? "Gasto cargado" : input.kind === "retiro" ? "Retiro cargado" : "Ingreso cargado");
+}
+export async function removeCashMove(id: string) {
+  await requireAdmin(); const club = await getClub();
+  const m = await one("select * from cash_move where id=$1 and club_id=$2", [id, club.id]); if (!m) return err("No existe.");
+  if (await closedDay(club.id, m.date)) return err("La caja de ese día está cerrada.");
+  await q("delete from cash_move where id=$1", [id]); doneCaja(); return ok("Movimiento borrado");
+}
+export async function setOpening(date: string, amount: number) {
+  await requireAdmin(); const club = await getClub(); if (!isDate(date)) return err("Fecha inválida.");
+  if (await closedDay(club.id, date)) return err("La caja de ese día está cerrada.");
+  await q("delete from cash_move where club_id=$1 and date=$2 and kind='apertura'", [club.id, date]);
+  await q("insert into cash_move (club_id,date,kind,amount,method,note) values ($1,$2,'apertura',$3,'Efectivo','Fondo inicial')", [club.id, date, Math.max(0, Math.round(Number(amount) || 0))]);
+  doneCaja(); return ok("Fondo inicial actualizado");
+}
+export async function closeDay(input: { date: string; counted: number; leftInBox: number; checks: Record<string, boolean>; note: string }) {
+  await requireAdmin(); const club = await getClub(); if (!isDate(input.date)) return err("Fecha inválida.");
+  if (await closedDay(club.id, input.date)) return err("Ese día ya está cerrado.");
+  const counted = Math.round(Number(input.counted)), left = Math.round(Number(input.leftInBox));
+  if (!(counted >= 0)) return err("Contá el efectivo de la caja.");
+  if (!(left >= 0) || left > counted) return err("Lo que queda en caja no puede ser más que lo contado.");
+  const { getCajaDay } = await import("@/lib/caja");
+  const d = await getCajaDay(club.id, input.date);
+  const diff = counted - d.expected;
+  await q(`insert into cash_close (club_id,date,opening,expected,counted,diff,left_in_box,totals,checks,note) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [club.id, input.date, d.opening, d.expected, counted, diff, left, JSON.stringify(d.totals), JSON.stringify(input.checks || {}), input.note.trim()]);
+  doneCaja();
+  return ok(diff === 0 ? "Caja cerrada. Todo cuadra ✓" : diff < 0 ? `Caja cerrada con faltante de $${(-diff).toLocaleString("es-AR")}` : `Caja cerrada con sobrante de $${diff.toLocaleString("es-AR")}`);
+}
+export async function reopenDay(date: string) {
+  await requireAdmin(); const club = await getClub();
+  await q("delete from cash_close where club_id=$1 and date=$2", [club.id, date]); doneCaja(); return ok("Caja reabierta");
 }
