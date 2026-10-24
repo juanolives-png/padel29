@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import ProductPicker, { type P } from "./ProductPicker";
-import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, payPlayer, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass } from "@/app/admin/actions";
+import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, payPlayer, payWithItems, splitPool, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass } from "@/app/admin/actions";
 import { fmt, dayLabel } from "@/lib/time";
 import { passFor } from "@/lib/club29";
 
@@ -16,17 +16,21 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
   const router = useRouter(); const [d, setD] = useState<any>(null); const [method, setMethod] = useState("Efectivo");
   const [target, setTarget] = useState<number[]>([]); const [phones, setPhones] = useState<Record<number, string>>({}); const [linking, setLinking] = useState<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false); const [showWa, setShowWa] = useState(false);
+  // cobro a una persona: qué se lleva de la mesa
+  const [co, setCo] = useState<{ idx: number; own: boolean; takes: Record<string, number> } | null>(null);
   const [pending, start] = useTransition();
   const reload = useCallback(async () => { const r = await loadBooking(id); setD(r); }, [id]);
   useEffect(() => { reload(); }, [reload]);
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") { if (co) setCo(null); else onClose(); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose, co]);
   const run = (fn: () => Promise<{ ok: boolean; msg: string }>) => start(async () => { const r = await fn(); toast(r.msg, !r.ok); await reload(); router.refresh(); });
   const shell = (body: React.ReactNode) => <div className="overlay sheet" onClick={e => { if (e.target === e.currentTarget) onClose(); }}><div className="sheet-box" role="dialog" aria-modal="true" aria-label="Cuenta del turno">{body}</div></div>;
   if (!d) return shell(<p className="muted" style={{ padding: 24 }}>Cargando…</p>);
   const b = d.booking, a = d.acct, n = d.players.length;
   const subFor = (pid: string | null) => d.subs.find((s: any) => s.player_id === pid);
-  const waTxt = `Cuenta del turno · ${b.court_name} ${dayLabel(b.date)} ${b.start}\n` + d.players.map((p: any, i: number) => `• ${p.name}: ${a.due[i] > 0 ? "debe " + fmt(a.due[i]) : "al día"}`).join("\n") + "\nCada uno puede pagar su parte en el club o por transferencia.";
-  const forTxt = target.length === 0 ? `entre los ${n}` : target.length === 1 ? `solo ${d.players.find((p: any) => p.idx === target[0])?.name}` : `entre ${target.length}`;
+  const waTxt = `Cuenta del turno · ${b.court_name} ${dayLabel(b.date)} ${b.start}\n` + d.players.map((p: any, i: number) => `• ${p.name}: ${a.due[i] > 0 ? "debe " + fmt(a.due[i]) : "al día"}`).join("\n") + (a.pool > 0 ? `\n• En la mesa, sin repartir: ${fmt(a.pool)}` : "") + "\nCada uno puede pagar su parte en el club o por transferencia.";
+  const forTxt = target.length === 0 ? "Queda en la mesa: al cobrar elegís quién lo paga." : target.length === 1 ? `Va a la cuenta de ${d.players.find((p: any) => p.idx === target[0])?.name}.` : `Se divide entre ${target.length}.`;
+  const owing = d.players.filter((_: any, i: number) => a.due[i] > 0);
+  const cobrar = (idx: number) => { const i = d.players.findIndex((p: any) => p.idx === idx); if (a.pool > 0) setCo({ idx, own: a.due[i] > 0, takes: {} }); else run(() => payPlayer(id, idx, method)); };
 
   return shell(<>
     <header className="sheet-head">
@@ -51,6 +55,11 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
           <div className={"falta" + (a.falta <= 0 ? " zero" : "")}><span>Falta</span><b>{fmt(Math.max(0, a.falta))}</b></div>
         </div>
 
+        {a.pool > 0 && <div className="mesa">
+          <div className="between" style={{ gap: 8 }}><span><b>🧺 En la mesa · {fmt(a.pool)}</b><small>Todavía no es de nadie. Al cobrarle a alguien, tocás lo que paga.</small></span>
+            <button className="btn sm ghost" disabled={pending} onClick={() => run(() => splitPool(id))}>Repartir entre {owing.length && owing.length < n ? `los ${owing.length} que faltan` : `los ${n}`}</button></div>
+          <div className="mesa-items">{a.poolLines.map((l: any) => <span key={l.id}>{l.emoji} {l.qty > 1 ? l.qty + " " : ""}{l.name}</span>)}</div>
+        </div>}
         <div className="row" style={{ gap: 8 }}><span className="lbl">Cobrar con</span><div className="chips">{METHODS.map(m => <button key={m} className="chip" aria-pressed={m === method} onClick={() => setMethod(m)}>{m === "QR Mercado Pago" ? "QR MP" : m}</button>)}</div></div>
 
         <div className="players">{d.players.map((p: any, i: number) => {
@@ -72,7 +81,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
               <input autoFocus className="input" style={{ padding: "6px 8px", fontSize: 13 }} placeholder="Celular" inputMode="tel" aria-label={`Celular de ${p.name}`} value={phones[p.idx] || ""} onChange={e => setPhones({ ...phones, [p.idx]: e.target.value })} />
               <button className="btn sm ghost" style={{ padding: "6px 10px" }}>OK</button></form>
               : <button className="linkbtn" onClick={() => setLinking(p.idx)}>+ vincular celular</button>)}
-            {due > 0 && <button className="btn" onClick={() => run(() => payPlayer(id, p.idx, method))} disabled={pending}>Cobrar {fmt(due)}</button>}
+            {(due > 0 || a.pool > 0) && <button className="btn" onClick={() => cobrar(p.idx)} disabled={pending}>{due > 0 ? `Cobrar ${fmt(due)}${a.pool > 0 ? " + mesa" : ""}` : "Cobrar de la mesa"}</button>}
           </div>; })}</div>
 
         {a.falta > 0 && <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} onClick={() => run(() => payAll(id, method))} disabled={pending}>Cobrar todo · {fmt(a.falta)}</button>}
@@ -99,13 +108,38 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
       {/* columna consumos */}
       <section className="sheet-col side2" aria-label="Consumos">
         <h3 style={{ margin: 0, fontSize: 22 }}>Consumos</h3>
-        <div className="row" style={{ gap: 8 }}><span className="lbl">Para</span><div className="chips"><button className="chip" aria-pressed={!target.length} onClick={() => setTarget([])}>Todos</button>{d.players.map((p: any) => <button key={p.idx} className="chip" aria-pressed={target.includes(p.idx)} onClick={() => { const t = target.includes(p.idx) ? target.filter(x => x !== p.idx) : [...target, p.idx].sort(); setTarget(t.length === n ? [] : t); }}>{p.name}</button>)}</div></div>
-        <p className="small muted" style={{ margin: "-8px 0 0" }}>Se divide {forTxt}.</p>
-        <ProductPicker products={products} onAdd={pr => run(() => addConsumption(id, pr.id, 1, target.length ? target : d.players.map((p: any) => p.idx)))} />
+        <div className="row" style={{ gap: 8 }}><span className="lbl">Para</span><div className="chips"><button className="chip" aria-pressed={!target.length} onClick={() => setTarget([])}>🧺 Mesa</button>{d.players.map((p: any) => <button key={p.idx} className="chip" aria-pressed={target.includes(p.idx)} onClick={() => { const t = target.includes(p.idx) ? target.filter(x => x !== p.idx) : [...target, p.idx].sort(); setTarget(t); }}>{p.name}</button>)}</div></div>
+        <p className="small muted" style={{ margin: "-8px 0 0" }}>{forTxt}</p>
+        <ProductPicker products={products} onAdd={pr => run(() => addConsumption(id, pr.id, 1, target))} />
         {d.lines.length > 0 && <div className="stack" style={{ gap: 6 }}><div className="lbl">Cargado</div>{d.lines.map((l: any) => {
-          const who = l.player_idx.length === n ? "Todos" : l.player_idx.map((x: number) => d.players.find((p: any) => p.idx === x)?.name).join(", ");
+          const who = !l.player_idx.length ? "🧺 En la mesa" : l.player_idx.length === n ? "Todos" : l.player_idx.map((x: number) => d.players.find((p: any) => p.idx === x)?.name).join(", ");
           return <div key={l.id} className="line2"><span className="em" aria-hidden>{l.emoji}</span><span>{l.name}{l.qty > 1 ? ` x${l.qty}` : ""}<small>{who}</small></span><span className="amt">{fmt(l.unit_price * l.qty)}</span><button aria-label="Quitar uno" onClick={() => run(() => removeConsumption(l.id))}>−</button></div>; })}</div>}
       </section>
     </div>
+    {co && (() => {
+      const i = d.players.findIndex((p: any) => p.idx === co.idx), pl = d.players[i];
+      const own = co.own ? Math.max(0, a.due[i]) : 0;
+      const items = a.poolLines.reduce((s: number, l: any) => s + (co.takes[l.id] || 0) * l.unitPrice, 0);
+      const tot = Math.round(own + items);
+      const setT = (l: any, v: number) => setCo({ ...co, takes: { ...co.takes, [l.id]: Math.max(0, Math.min(l.qty, v)) } });
+      return <div className="overlay center" style={{ zIndex: 70 }} onClick={e => { if (e.target === e.currentTarget) setCo(null); }}>
+        <div className="modal checkout" role="dialog" aria-modal="true" aria-label={`Cobrar a ${pl.name}`}>
+          <div className="between"><h3 style={{ margin: 0 }}>Cobrar a {pl.name}</h3><button className="xbtn" onClick={() => setCo(null)} aria-label="Cerrar">✕</button></div>
+          {a.due[i] > 0 && <label className={"co-own" + (co.own ? " on" : "")}><input type="checkbox" checked={co.own} onChange={e => setCo({ ...co, own: e.target.checked })} />
+            <span><b>Su parte</b><small>{a.det[i].filter(([, v]: [string, number]) => v > 0).map(([l]: [string, number]) => l.replace(/ [¼½⅓⅔¾].*$|\s\d+\/\d+$/, "")).join(" + ") || "Lo que ya tenía"}</small></span><b>{fmt(a.due[i])}</b></label>}
+          <div className="lbl">De la mesa · tocá lo que paga {pl.name}</div>
+          <div className="co-items">{a.poolLines.map((l: any) => { const t = co.takes[l.id] || 0;
+            return <div key={l.id} className={"co-item" + (t ? " on" : "")}>
+              <button className="co-add" onClick={() => setT(l, t + 1)} disabled={t >= l.qty} aria-label={`Sumar un ${l.name}`}><span className="em" aria-hidden>{l.emoji}</span><span>{l.name}<small>{fmt(l.unitPrice)} · hay {l.qty}</small></span></button>
+              <div className="qty"><button onClick={() => setT(l, t - 1)} disabled={!t} aria-label={`Uno menos de ${l.name}`}>−</button><b>{t}</b><button onClick={() => setT(l, t + 1)} disabled={t >= l.qty} aria-label={`Uno más de ${l.name}`}>+</button></div>
+              <button className="linkbtn" onClick={() => setT(l, t === l.qty ? 0 : l.qty)}>{t === l.qty ? "ninguno" : "todos"}</button>
+            </div>; })}</div>
+          <div className="co-total"><span>Total a cobrar</span><b>{fmt(tot)}</b></div>
+          <div className="chips">{METHODS.map(m => <button key={m} className="chip" aria-pressed={m === method} onClick={() => setMethod(m)}>{m === "QR Mercado Pago" ? "QR MP" : m}</button>)}</div>
+          <button className="btn block" style={{ padding: 16, fontSize: 17 }} disabled={pending || tot <= 0}
+            onClick={() => { const takes = Object.entries(co.takes).filter(([, q]) => q > 0).map(([lineId, qty]) => ({ lineId, qty })); setCo(null); run(() => payWithItems(id, co.idx, takes, co.own, method)); }}>Cobrar {fmt(tot)} · {method === "QR Mercado Pago" ? "QR MP" : method}</button>
+          <p className="small muted" style={{ margin: 0 }}>Lo que no toques queda en la mesa para los demás.</p>
+        </div></div>;
+    })()}
   </>);
 }

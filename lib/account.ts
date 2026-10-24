@@ -20,7 +20,10 @@ export function computeAccount(b: AcctInput) {
     if (p.passUsed > 0) det[i].push([`Cancha ${frac(1, n)} · ${p.passUsed === 0.5 ? "medio pase" : "1 pase"} 29club`, 0]);
     else { owe[i] += share; det[i].push([`Cancha ${frac(1, n)}`, share]); }
   });
-  b.lines.forEach(l => {
+  // consumos de la mesa: todavía sin dueño, se asignan cuando alguien los paga
+  const poolLines = b.lines.filter(l => !l.playerIdx.length);
+  const pool = poolLines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+  b.lines.filter(l => l.playerIdx.length).forEach(l => {
     const each = (l.unitPrice * l.qty) / l.playerIdx.length;
     l.playerIdx.forEach(pi => { const i = players.findIndex(p => p.idx === pi); if (i < 0) return; owe[i] += each; det[i].push([`${l.name} ${frac(l.qty, l.playerIdx.length)}`.trim(), each]); });
   });
@@ -31,6 +34,6 @@ export function computeAccount(b: AcctInput) {
   const passCover = players.reduce((s, p) => s + (p.passUsed > 0 ? courtBase / n : 0), 0);
   const total = b.courtPrice + consumos;
   const cobrado = b.senaPaid + b.payments.reduce((s, p) => s + p.amount, 0);
-  const falta = due.reduce((s, d) => s + Math.max(0, d), 0);
-  return { players, owe, paid, due, det, consumos, passCover, total, cobrado, falta, settled: falta < 1 && (b.payments.length > 0 || passCover > 0 || b.senaPaid >= b.courtPrice) };
+  const falta = due.reduce((s, d) => s + Math.max(0, d), 0) + pool;
+  return { players, owe, paid, due, det, consumos, passCover, total, cobrado, falta, pool, poolLines, settled: falta < 1 && (b.payments.length > 0 || passCover > 0 || b.senaPaid >= b.courtPrice) };
 }

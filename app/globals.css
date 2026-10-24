@@ -465,3 +465,27 @@ fieldset.tset legend { font-size: 12px; font-weight: 700; letter-spacing: .08em;
 .hor2 { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
 .hor2 input { padding: 6px 4px; font-size: 13px; }
 .pav-day { align-content: start; }
+
+/* la mesa y el cobro por persona */
+.mesa { background: #fff7d6; border: 1.5px solid #f0dc8a; border-radius: 16px; padding: 12px 14px; display: grid; gap: 8px; }
+.mesa small { display: block; font-size: 12.5px; color: #7a6416; font-weight: 500; }
+.mesa-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.mesa-items span { background: #fff; border-radius: 99px; padding: 3px 10px; font-size: 13px; font-weight: 600; }
+.checkout { width: min(520px, 100%); gap: 12px; }
+.co-own { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 12px; cursor: pointer; }
+.co-own.on { border-color: var(--pri); background: var(--soft); }
+.co-own input { width: 20px; height: 20px; accent-color: var(--pri); }
+.co-own small { display: block; color: var(--muted); font-size: 12.5px; }
+.co-own > b { font-family: var(--f-head); font-size: 20px; }
+.co-items { display: grid; gap: 8px; max-height: 42vh; overflow-y: auto; }
+.co-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; border: 2px solid var(--line); border-radius: 14px; padding: 6px 10px 6px 6px; }
+.co-item.on { border-color: var(--pri); background: #f3f8d8; }
+.co-add { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 8px; align-items: center; border: 0; background: none; text-align: left; padding: 4px; font-weight: 700; min-width: 0; }
+.co-add .em { font-size: 26px; text-align: center; }
+.co-add small { display: block; font-weight: 500; color: var(--muted); font-size: 12.5px; }
+.co-item .qty { display: inline-flex; align-items: center; gap: 6px; }
+.co-item .qty button { width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); font-size: 18px; font-weight: 700; }
+.co-item .qty b { min-width: 18px; text-align: center; font-size: 17px; font-variant-numeric: tabular-nums; }
+.co-total { display: flex; justify-content: space-between; align-items: baseline; background: var(--pri); color: #fff; border-radius: 14px; padding: 12px 16px; }
+.co-total span { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; font-weight: 700; }
+.co-total b { font-family: var(--f-head); font-size: 38px; color: var(--acc); font-variant-numeric: tabular-nums; }

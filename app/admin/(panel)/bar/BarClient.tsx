@@ -26,7 +26,7 @@ export default function BarClient({ products, turnos }: { products: P[]; turnos:
   const items = ticket.map(t => ({ productId: t.p.id, qty: t.qty }));
   const after = (r: { ok: boolean; msg: string }) => { toast.show(r.msg, !r.ok); if (r.ok) { setTicket([]); router.refresh(); } };
   const turnoName = turnos.find(t => t.id === to)?.label.split(" · ").slice(0, 2).join(" · ");
-  const whoTxt = who.length === 0 ? "entre todos" : who.length === 1 ? `a ${players.find(p => p.idx === who[0])?.name}` : `entre ${who.length}`;
+  const whoTxt = who.length === 0 ? "a la mesa" : who.length === 1 ? `a ${players.find(p => p.idx === who[0])?.name}` : `entre ${who.length}`;
 
   return <div className="pos-main">
     <section className="pos-prods card" aria-label="Productos"><ProductPicker products={products} onAdd={p => add(p, 1)} pos inCart={inCart} /></section>
@@ -51,8 +51,8 @@ export default function BarClient({ products, turnos }: { products: P[]; turnos:
         <button key={m} className="btn" disabled={pending || !ticket.length} onClick={() => start(async () => after(await counterSale(items, m)))}><span aria-hidden style={{ fontSize: 22 }}>{ic}</span>{l}</button>)}</div>
         : turnos.length ? <div className="stack" style={{ gap: 10 }}>
           <select className="input" value={to} onChange={e => setTo(e.target.value)} aria-label="Turno de hoy">{turnos.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
-          <div className="chips"><button className="chip" aria-pressed={!who.length} onClick={() => setWho([])}>Todos</button>{players.map(p => <button key={p.idx} className="chip" aria-pressed={who.includes(p.idx)} onClick={() => { const w = who.includes(p.idx) ? who.filter(x => x !== p.idx) : [...who, p.idx].sort(); setWho(w.length === players.length ? [] : w); }}>{p.name}</button>)}</div>
-          <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} disabled={pending || !ticket.length || !to} onClick={() => start(async () => after(await chargeToBooking(to, items, who.length ? who : players.map(p => p.idx))))}>Cargar {fmt(total)} a {turnoName} · {whoTxt}</button>
+          <div className="chips"><button className="chip" aria-pressed={!who.length} onClick={() => setWho([])}>🧺 Mesa</button>{players.map(p => <button key={p.idx} className="chip" aria-pressed={who.includes(p.idx)} onClick={() => { const w = who.includes(p.idx) ? who.filter(x => x !== p.idx) : [...who, p.idx].sort(); setWho(w); }}>{p.name}</button>)}</div>
+          <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} disabled={pending || !ticket.length || !to} onClick={() => start(async () => after(await chargeToBooking(to, items, who)))}>Cargar {fmt(total)} a {turnoName} · {whoTxt}</button>
         </div> : <p className="muted small" style={{ margin: 0 }}>No hay turnos con cuenta abierta hoy.</p>}
     </aside>
     {toast.node}
