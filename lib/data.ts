@@ -45,7 +45,7 @@ export async function getBookingDetail(id: string) {
   const b = await one("select b.*, c.name as court_name, c.kind as court_kind from booking b join court c on c.id=b.court_id where b.id=$1", [id]);
   if (!b) return null;
   const [players, lines, payments] = await Promise.all([
-    q("select bp.idx, bp.name, bp.player_id, bp.pass_used, bp.pass_kind, bp.pass_sub_id, p.phone from booking_player bp left join player p on p.id=bp.player_id where booking_id=$1 order by idx", [id]),
+    q("select bp.idx, bp.name, bp.player_id, bp.pass_used, bp.pass_kind, bp.pass_sub_id, p.phone, p.name as full_name from booking_player bp left join player p on p.id=bp.player_id where booking_id=$1 order by idx", [id]),
     q("select c.id, c.qty, c.unit_price, c.player_idx, c.shares, c.created_at, p.name, p.emoji from consumption c join product p on p.id=c.product_id where booking_id=$1 order by c.created_at", [id]),
     q("select id, player_idx, amount, method, created_at from payment where booking_id=$1 order by created_at", [id])]);
   // socios con pases activos entre los jugadores

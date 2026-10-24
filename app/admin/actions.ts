@@ -134,30 +134,43 @@ async function balanceOf(c: Tx | null, playerId: string) {
 const MONEY = ["Efectivo", "Transferencia", "QR Mercado Pago"];
 const pesos = (n: number) => "$" + Math.round(n).toLocaleString("es-AR");
 
+/** Nombre y apellido + celular: obligatorios para tener cuenta corriente */
+export type Ident = { name?: string; phone?: string };
+const fullName = (n: string) => n.trim().split(/\s+/).filter(w => w.length > 1).length >= 2;
+async function ensureIdentity(c: Tx, clubId: string, bookingId: string, idx: number, id: Ident) {
+  const bp = (await c.query("select bp.*, p.name as full_name, p.phone from booking_player bp left join player p on p.id=bp.player_id where bp.booking_id=$1 and bp.idx=$2", [bookingId, idx])).rows[0];
+  if (!bp) throw new Error("Jugador inexistente.");
+  const name = (id.name ?? bp.full_name ?? "").trim().replace(/\s+/g, " "), phone = (id.phone ?? bp.phone ?? "").replace(/\D/g, "");
+  if (!fullName(name)) throw new Error(`Para pasarlo a cuenta corriente falta el nombre y apellido de ${bp.name}.`);
+  if (phone.length < 8) throw new Error(`Para pasarlo a cuenta corriente falta el celular de ${bp.name}.`);
+  let pid: string;
+  const byPhone = (await c.query("select id from player where club_id=$1 and phone=$2", [clubId, phone])).rows[0];
+  if (bp.player_id && (!byPhone || byPhone.id === bp.player_id)) { pid = bp.player_id; await c.query("update player set name=$2, phone=$3 where id=$1", [pid, name, phone]); }
+  else if (byPhone) { pid = byPhone.id; await c.query("update player set name=$2 where id=$1", [pid, name]); }
+  else pid = (await c.query("insert into player (club_id,name,phone) values ($1,$2,$3) returning id", [clubId, name, phone])).rows[0].id;
+  await c.query("update booking_player set player_id=$3, name=$4 where booking_id=$1 and idx=$2", [bookingId, idx, pid, name.split(" ")[0]]);
+  return pid;
+}
+
 /**
  * Cobro a una persona. Junta: su parte (si se elige) + lo que se lleva de la mesa + su deuda anterior (si se elige).
  * method: Efectivo | Transferencia | QR Mercado Pago | Saldo (usa lo que tiene a favor) | A cuenta (lo deja debiendo)
  * received: efectivo que entrega; si sobra, es vuelto o queda a favor (changeToCredit).
  */
 export async function cobrar(input: { bookingId: string; idx: number; includeOwn: boolean; takes: { lineId: string; amount: number }[]; method: string;
-  received?: number; changeToCredit?: boolean; includeDebt?: boolean; phone?: string; name?: string }) {
+  received?: number; changeToCredit?: boolean; includeDebt?: boolean; restToAccount?: boolean; phone?: string; name?: string }) {
   await requireAdmin(); const club = await getClub();
   const before = await dueOf(input.bookingId);
   const i = before.acct.players.findIndex((p: any) => p.idx === input.idx); if (i < 0) return err("Jugador inexistente.");
   const bp = before.players[i];
   const own = input.includeOwn ? Math.max(0, before.acct.due[i]) : 0;
-  const needsAccount = input.method === "Saldo" || input.method === "A cuenta" || !!input.changeToCredit || !!input.includeDebt;
+  const needsAccount = input.method === "Saldo" || input.method === "A cuenta" || !!input.changeToCredit || !!input.includeDebt || !!input.restToAccount;
   let msg = "";
   try {
     await tx(async c => {
-      // vincular a una persona si hace falta cuenta corriente
+      // la cuenta corriente exige nombre, apellido y celular
       let playerId: string | null = bp.player_id;
-      if (!playerId && needsAccount) {
-        const ph = (input.phone || "").replace(/\D/g, ""); if (ph.length < 8) throw new Error("Para usar la cuenta corriente poné su celular.");
-        const nm = (input.name || bp.name || "").trim();
-        playerId = (await c.query("insert into player (club_id,name,phone) values ($1,$2,$3) on conflict (club_id,phone) do update set name=case when player.name='' then excluded.name else player.name end returning id", [club.id, nm, ph])).rows[0].id;
-        await c.query("update booking_player set player_id=$3 where booking_id=$1 and idx=$2", [input.bookingId, input.idx, playerId]);
-      }
+      if (needsAccount) playerId = await ensureIdentity(c, club.id, input.bookingId, input.idx, { name: input.name, phone: input.phone });
       let items = 0;
       for (const t of input.takes) if (t.amount > 0) items += await takeFromPool(c, input.bookingId, t.lineId, t.amount, input.idx);
       const part = Math.round(own + items); // lo de este turno
@@ -185,7 +198,10 @@ export async function cobrar(input: { bookingId: string; idx: number; includeOwn
       let r = got - toTurn;
       const toDebt = Math.min(r, debt); if (toDebt > 0) { await move(toDebt, "pago_deuda", input.method, "Pagó deuda anterior"); r -= toDebt; }
       const parts = [`${bp.name} pagó ${pesos(got)} · ${input.method === "QR Mercado Pago" ? "QR MP" : input.method}`];
-      if (got < part) parts.push(`queda debiendo ${pesos(part - got)} del turno`);
+      if (got < part) {
+        if (input.restToAccount) { await pay(part - got, "Cuenta corriente"); await move(-(part - got), "deuda", "", "Le faltó plata al pagar"); parts.push(`${pesos(part - got)} a su cuenta corriente`); }
+        else parts.push(`queda debiendo ${pesos(part - got)} del turno`);
+      }
       if (r > 0) { if (input.changeToCredit) { await move(r, "a_favor", input.method, "Vuelto a favor"); parts.push(`${pesos(r)} quedan a favor`); } else parts.push(`vuelto ${pesos(r)}`); }
       msg = parts.join(" · ");
     });
@@ -196,6 +212,37 @@ export async function cobrar(input: { bookingId: string; idx: number; includeOwn
 export async function payWithItems(bookingId: string, idx: number, takes: { lineId: string; qty: number }[], includeOwn: boolean, method: string) {
   const d = await dueOf(bookingId);
   return cobrar({ bookingId, idx, includeOwn, method, takes: takes.map(t => { const l = d.lines.find((x: any) => x.id === t.lineId); return { lineId: t.lineId, amount: (l?.unit_price || 0) * t.qty }; }) });
+}
+/** Cierra la cuenta del turno: lo que cada uno debe (y lo que quedó en la mesa) pasa a su cuenta corriente */
+export async function closeToAccount(bookingId: string, people: ({ idx: number } & Ident)[]) {
+  await requireAdmin(); const club = await getClub();
+  try {
+    const n = await tx(async c => {
+      const d0 = await getBookingDetail(bookingId); if (!d0) throw new Error("Turno inexistente.");
+      if (d0.acct.pool > 0) { const owing = d0.acct.players.filter((_: any, i: number) => d0.acct.due[i] > 0).map((p: any) => p.idx); await assignPool(c, bookingId, owing.length ? owing : d0.acct.players.map((p: any) => p.idx)); }
+      // recalcular con la mesa repartida (dentro de la misma transacción)
+      const lines = (await c.query("select c.id, c.qty, c.unit_price, c.player_idx, c.shares, p.name, p.emoji from consumption c join product p on p.id=c.product_id where booking_id=$1", [bookingId])).rows;
+      const pays = (await c.query("select player_idx, amount from payment where booking_id=$1", [bookingId])).rows;
+      const { computeAccount } = await import("@/lib/account");
+      const a = computeAccount({ courtPrice: d0.booking.court_price, senaPaid: d0.booking.sena_paid, senaMode: d0.booking.sena_mode,
+        players: d0.players.map((p: any) => ({ idx: p.idx, name: p.name, passUsed: p.pass_used, passKind: p.pass_kind })),
+        lines: lines.map((l: any) => ({ id: l.id, qty: l.qty, unitPrice: l.unit_price, playerIdx: l.player_idx, name: l.name, emoji: l.emoji, shares: l.shares })),
+        payments: pays.map((p: any) => ({ playerIdx: p.player_idx, amount: p.amount })) });
+      let k = 0, acc = 0;
+      for (const [i, pl] of a.players.entries()) {
+        const due = a.due[i]; if (due <= 0) continue;
+        const amt = Math.round(acc + due) - Math.round(acc); acc += due; if (amt <= 0) continue;
+        const who = people.find(p => p.idx === pl.idx) || {};
+        const pid = await ensureIdentity(c, club.id, bookingId, pl.idx, who);
+        await c.query("insert into payment (booking_id,player_idx,amount,method) values ($1,$2,$3,'Cuenta corriente')", [bookingId, pl.idx, amt]);
+        await c.query("insert into account_move (club_id,player_id,amount,kind,method,booking_id,note) values ($1,$2,$3,'deuda','',$4,'Cuenta del turno cerrada')", [club.id, pid, -amt, bookingId]);
+        k++;
+      }
+      return k;
+    });
+    done(); revalidatePath("/admin/caja"); revalidatePath("/admin/cuentas");
+    return n ? ok(`Cuenta cerrada: ${n} deuda${n > 1 ? "s" : ""} pasaron a cuenta corriente`) : err("No hay nada que pasar a cuenta corriente.");
+  } catch (e) { return err((e as Error).message); }
 }
 /** Reparte la mesa entre los jugadores elegidos (por defecto, los que todavía deben) */
 export async function splitPool(bookingId: string, idxs?: number[]) {

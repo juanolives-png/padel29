@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import ProductPicker, { type P } from "./ProductPicker";
 import PayModal from "./PayModal";
+import ToAccountModal from "./ToAccountModal";
 import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, cobrar as cobrarAction, splitPool, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass } from "@/app/admin/actions";
 import { fmt, dayLabel } from "@/lib/time";
 import { passFor } from "@/lib/club29";
@@ -18,7 +19,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
   const [target, setTarget] = useState<number[]>([]); const [phones, setPhones] = useState<Record<number, string>>({}); const [linking, setLinking] = useState<number | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false); const [showWa, setShowWa] = useState(false);
   // cobro a una persona: qué se lleva de la mesa
-  const [co, setCo] = useState<number | "all" | null>(null);
+  const [co, setCo] = useState<number | "all" | null>(null); const [toAcc, setToAcc] = useState(false);
   const [pending, start] = useTransition();
   const reload = useCallback(async () => { const r = await loadBooking(id); setD(r); }, [id]);
   useEffect(() => { reload(); }, [reload]);
@@ -86,6 +87,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
           </div>; })}</div>
 
         {a.falta > 0 && <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} onClick={() => setCo("all")} disabled={pending}>Cobrar todo · {fmt(a.falta)}</button>}
+        {a.falta > 0 && <button className="btn ghost block" onClick={() => setToAcc(true)} disabled={pending}>📝 Cerrar cuenta y pasar lo que deben a cuenta corriente</button>}
 
         <details className="more">
           <summary>Seña, movimientos y cancelación</summary>
@@ -118,13 +120,14 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
           return <div key={l.id} className="line2"><span className="em" aria-hidden>{l.emoji}</span><span>{l.name}{l.qty > 1 ? ` x${l.qty}` : ""}<small>{who}</small></span><span className="amt">{fmt(l.unit_price * l.qty)}</span><button aria-label="Quitar uno" onClick={() => run(() => removeConsumption(l.id))}>−</button></div>; })}</div>}
       </section>
     </div>
+    {toAcc && <ToAccountModal bookingIds={[id]} toast={toast} onClose={() => setToAcc(false)} onDone={async () => { setToAcc(false); await reload(); router.refresh(); }} />}
     {co !== null && (() => {
       if (co === "all") return <PayModal title="Cobrar todo lo que falta" own={a.falta} ownLabel={a.pool > 0 ? "Lo de la mesa se reparte entre los que faltan" : "Todos los que deben"} pool={[]} balance={null} linked allowAccount={false} pending={pending}
         onClose={() => setCo(null)} onPay={r => { setCo(null); run(() => payAll(id, r.method)); if (r.received && r.received > a.falta) toast(`Vuelto ${fmt(r.received - a.falta)}`); }} />;
       const i = d.players.findIndex((p: any) => p.idx === co), pl = d.players[i];
       const lbl = a.det[i].filter(([, v]: [string, number]) => v > 0).map(([l]: [string, number]) => l).join(" + ") || "Lo que ya tenía";
       return <PayModal title={`Cobrar a ${pl.name}`} own={Math.max(0, a.due[i])} ownLabel={lbl} pool={a.poolLines.map((l: any) => ({ id: l.id, name: l.name, emoji: l.emoji, unit: l.unitPrice, left: l.left }))}
-        balance={pl.player_id ? d.balances?.[pl.player_id] ?? 0 : null} linked={!!pl.player_id} allowAccount pending={pending} onClose={() => setCo(null)}
+        balance={pl.player_id ? d.balances?.[pl.player_id] ?? 0 : null} linked={!!pl.player_id} allowAccount pending={pending} onClose={() => setCo(null)} ident={{ name: pl.full_name || "", phone: pl.phone || "" }}
         onPay={r => { setCo(null); run(() => cobrarAction({ bookingId: id, idx: pl.idx, ...r })); }} />;
     })()}
   </>);

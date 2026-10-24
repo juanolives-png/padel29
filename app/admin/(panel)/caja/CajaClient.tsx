@@ -2,6 +2,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import ToAccountModal from "@/components/ToAccountModal";
 import { addCashMove, closeDay, removeCashMove, reopenDay, setOpening } from "../../actions";
 import { fmt } from "@/lib/time";
 
@@ -19,6 +20,7 @@ export default function CajaClient({ date, label, clubName, d, closes }: { date:
   const [counted, setCounted] = useState<string>(""); const [bills, setBills] = useState<Record<number, string>>({}); const [useBills, setUseBills] = useState(false);
   const [left, setLeft] = useState<string>(String(d.opening || "")); const [checks, setChecks] = useState<Record<string, boolean>>({}); const [note, setNote] = useState("");
   const [mv, setMv] = useState<{ kind: string; amount: string; method: string; note: string } | null>(null);
+  const [toAcc, setToAcc] = useState<null | "only" | "close">(null);
   const [editOpen, setEditOpen] = useState<string | null>(null); const [filter, setFilter] = useState("all");
   const billsTotal = BILLS.reduce((s, b) => s + b * num(bills[b] || ""), 0);
   const cnt = useBills ? billsTotal : num(counted);
@@ -45,7 +47,7 @@ export default function CajaClient({ date, label, clubName, d, closes }: { date:
         <div className="small" style={{ opacity: .7 }}>{d.list.filter((m: any) => m.sign > 0).length} cobros{t.out ? ` · ${fmt(t.out)} en gastos y retiros` : ""}</div></div>
     </div>
 
-    {d.pending.length > 0 && <div className="alert warn"><b>Quedan {fmt(d.pending.reduce((s: number, p: any) => s + p.falta, 0))} sin cobrar</b> en {d.pending.length} turno{d.pending.length > 1 ? "s" : ""}: {d.pending.map((p: any) => `${p.start} ${p.holder} (${fmt(p.falta)})`).join(" · ")}. <a href={`/admin?d=${date}`}>Ir a la agenda</a></div>}
+    {d.pending.length > 0 && <div className="alert warn"><b>Quedan {fmt(d.pending.reduce((s: number, p: any) => s + p.falta, 0))} sin cobrar</b> en {d.pending.length} turno{d.pending.length > 1 ? "s" : ""}: {d.pending.map((p: any) => `${p.start} ${p.holder} (${fmt(p.falta)})`).join(" · ")}. <div className="row" style={{ gap: 8, marginTop: 8 }}><a className="btn sm ghost" href={`/admin?d=${date}`}>Cobrar en la agenda</a>{!c && <button className="btn sm dark" onClick={() => setToAcc("only")}>📝 Pasar todo a cuenta corriente</button>}</div></div>}
     {c && d.changed && <div className="alert bad"><b>Hubo movimientos después del cierre.</b> Los números de arriba ya no coinciden con lo que se cerró. Reabrí la caja y volvé a cerrarla.</div>}
 
     <div className="caja-grid">
@@ -84,7 +86,8 @@ export default function CajaClient({ date, label, clubName, d, closes }: { date:
             <span>Controlé {m === "Transferencia" ? "las transferencias en el banco" : "los cobros en Mercado Pago"}: <b>{fmt(t.byMethod[m].in)}</b></span></label>)}
           <div className="field"><label htmlFor="nt">Nota (opcional)</label><input id="nt" className="input" value={note} onChange={e => setNote(e.target.value)} placeholder={diff < 0 ? "¿Por qué falta? Ej: vuelto mal dado" : "Ej: cerró Juan"} /></div>
           <button className="btn block" style={{ padding: 16, fontSize: 16 }} disabled={pending || !hasCount || leftN > cnt}
-            onClick={() => run(() => closeDay({ date, counted: cnt, leftInBox: leftN, checks, note }))}>{leftN > cnt ? "Lo que dejás no puede superar lo contado" : `Cerrar caja de ${label.toLowerCase()}`}</button>
+            onClick={() => d.pending.length ? setToAcc("close") : run(() => closeDay({ date, counted: cnt, leftInBox: leftN, checks, note }))}>{leftN > cnt ? "Lo que dejás no puede superar lo contado" : d.pending.length ? `Pasar deudas a cuenta corriente y cerrar` : `Cerrar caja de ${label.toLowerCase()}`}</button>
+          {d.pending.length > 0 && <p className="small muted" style={{ margin: 0 }}>Hay {fmt(d.pending.reduce((s: number, p: any) => s + p.falta, 0))} sin cobrar: al cerrar, esas deudas pasan a la cuenta corriente de cada jugador.</p>}
         </>}
       </section>
 
@@ -125,6 +128,8 @@ export default function CajaClient({ date, label, clubName, d, closes }: { date:
       <div className="scroll-x"><table className="tbl"><thead><tr><th>Día</th><th className="r">Total</th><th className="r">Efectivo esperado</th><th className="r">Contado</th><th className="r">Diferencia</th><th className="r">Quedó en caja</th></tr></thead>
         <tbody>{closes.map(x => <tr key={x.id}><td><a href={`/admin/caja?d=${x.date}`}>{x.date.slice(8)}/{x.date.slice(5, 7)}</a></td><td className="r">{fmt(x.totals.in - x.totals.out)}</td><td className="r">{fmt(x.expected)}</td><td className="r">{fmt(x.counted)}</td>
           <td className="r">{x.diff === 0 ? <span className="pill ok">Cuadra</span> : <span className={"pill " + (x.diff < 0 ? "bad" : "warn")}>{x.diff < 0 ? "−" : "+"}{fmt(Math.abs(x.diff))}</span>}</td><td className="r">{fmt(x.left_in_box)}</td></tr>)}</tbody></table></div></section>}
+    {toAcc && <ToAccountModal bookingIds={d.pending.map((p: any) => p.id)} toast={toast.show} title={toAcc === "close" ? "Antes de cerrar: deudas del día" : undefined} onClose={() => setToAcc(null)}
+      onDone={() => { const closing = toAcc === "close"; setToAcc(null); if (closing) run(() => closeDay({ date, counted: cnt, leftInBox: leftN, checks, note })); else router.refresh(); }} />}
     {toast.node}
   </div>;
 }

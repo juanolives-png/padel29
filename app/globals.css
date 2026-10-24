@@ -578,3 +578,9 @@ fieldset.tset legend { font-size: 12px; font-weight: 700; letter-spacing: .08em;
 .vz { min-width: 0; }
 .fin-grid > *, .fin-kpis > * { min-width: 0; }
 @media (max-width: 520px) { .fin-kpis { grid-template-columns: minmax(0, 1fr); } .hb-row { grid-template-columns: minmax(70px, 1fr) minmax(0, 1fr) auto; } }
+.identbox { display: grid; gap: 8px; background: var(--warn-bg); border-radius: 14px; padding: 12px; }
+.identbox b { color: #6b3f06; font-size: 14px; }
+.tacc { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+.tacc.bad { border-color: #f0b7b2; background: #fff7f6; }
+.tacc small { color: var(--muted); font-size: 12.5px; }
+.tacc .amt { font-family: var(--f-head); font-size: 20px; }

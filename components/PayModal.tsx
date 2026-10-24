@@ -13,11 +13,12 @@ function quick(total: number) {
 }
 
 export type PayItem = { id: string; name: string; emoji: string; unit: number; left: number };
-export type PayResult = { method: string; received?: number; changeToCredit: boolean; includeOwn: boolean; includeDebt: boolean; takes: { lineId: string; amount: number }[]; phone?: string };
+export type PayResult = { method: string; received?: number; changeToCredit: boolean; restToAccount: boolean; includeOwn: boolean; includeDebt: boolean; takes: { lineId: string; amount: number }[]; phone?: string; name?: string };
+const fullName = (n: string) => n.trim().split(/\s+/).filter(w => w.length > 1).length >= 2;
 
 /** Ventana de cobro: qué paga, cómo paga, vuelto y cuenta corriente */
-export default function PayModal({ title, own, ownLabel, pool, balance, linked, allowAccount, onClose, onPay, pending }: {
-  title: string; own: number; ownLabel: string; pool: PayItem[]; balance: number | null; linked: boolean; allowAccount: boolean;
+export default function PayModal({ title, own, ownLabel, pool, balance, linked, allowAccount, onClose, onPay, pending, ident }: {
+  title: string; own: number; ownLabel: string; pool: PayItem[]; balance: number | null; linked: boolean; allowAccount: boolean; ident?: { name: string; phone: string };
   onClose: () => void; onPay: (r: PayResult) => void; pending: boolean;
 }) {
   const [inclOwn, setInclOwn] = useState(own > 0);
@@ -27,7 +28,10 @@ export default function PayModal({ title, own, ownLabel, pool, balance, linked, 
   const [method, setMethod] = useState("Efectivo");
   const [recv, setRecv] = useState("");
   const [credit, setCredit] = useState(false);
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(ident?.phone || "");
+  const [name, setName] = useState(ident?.name || "");
+  const [rest, setRest] = useState(false);
+  const identOk = fullName(ident?.name || "") && (ident?.phone || "").replace(/\D/g, "").length >= 8;
   const bal = balance ?? 0;
   const items = pool.reduce((s, l) => s + (amt[l.id] || 0), 0);
   const part = Math.round((inclOwn ? own : 0) + items);
@@ -35,11 +39,11 @@ export default function PayModal({ title, own, ownLabel, pool, balance, linked, 
   const total = part + (method === "Saldo" || method === "A cuenta" ? 0 : debt);
   const got = method === "Efectivo" && recv !== "" ? num(recv) : total;
   const change = method === "Efectivo" ? got - total : 0;
-  const needsAcct = method === "Saldo" || method === "A cuenta" || credit || inclDebt;
+  const needsAcct = method === "Saldo" || method === "A cuenta" || credit || inclDebt || (rest && change < 0);
   const setA = (l: PayItem, v: number) => setAmt({ ...amt, [l.id]: Math.max(0, Math.min(l.left, Math.round(v * 100) / 100)) });
   const units = (l: PayItem) => { const a = amt[l.id] || 0, u = a / l.unit; return Math.abs(u - Math.round(u)) < 0.001 ? Math.round(u) : null; };
   const label = method === "A cuenta" ? `Dejar ${fmt(part)} a su cuenta` : method === "Saldo" ? `Pagar ${fmt(Math.min(part, bal))} con su saldo` : `Cobrar ${fmt(got)}`;
-  const can = !pending && (method === "Saldo" ? part > 0 && bal > 0 : method === "A cuenta" ? part > 0 : got > 0) && (!needsAcct || linked || num(phone) >= 10000000);
+  const can = !pending && (method === "Saldo" ? part > 0 && bal > 0 : method === "A cuenta" ? part > 0 : got > 0) && (!needsAcct || identOk || (fullName(name) && phone.replace(/\D/g, "").length >= 8));
 
   return <div className="overlay center" style={{ zIndex: 70 }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="modal checkout" role="dialog" aria-modal="true" aria-label={title}>
@@ -83,13 +87,17 @@ export default function PayModal({ title, own, ownLabel, pool, balance, linked, 
           <input className="input" inputMode="numeric" placeholder="Otro $" style={{ width: 110, padding: "7px 10px" }} value={recv && !quick(total).includes(num(recv)) ? fmt(num(recv)) : ""} onChange={e => setRecv(e.target.value.replace(/\D/g, ""))} aria-label="Con cuánto paga" /></div>
         {change > 0 && <div className="vuelto"><span>Vuelto</span><b>{fmt(change)}</b></div>}
         {change > 0 && allowAccount && <label className="checkrow"><input type="checkbox" checked={credit} onChange={e => setCredit(e.target.checked)} /><span>No le doy vuelto: <b>dejar {fmt(change)} a favor</b> en su cuenta</span></label>}
-        {change < 0 && <div className="vuelto debe"><span>Paga menos · queda debiendo</span><b>{fmt(-change)}</b></div>}
+        {change < 0 && <div className="vuelto debe"><span>Paga menos · {rest ? "va a su cuenta corriente" : "queda debiendo"}</span><b>{fmt(-change)}</b></div>}
+        {change < 0 && allowAccount && <label className="checkrow"><input type="checkbox" checked={rest} onChange={e => setRest(e.target.checked)} /><span>Mandar los <b>{fmt(-change)}</b> que faltan a su cuenta corriente</span></label>}
       </div>}
       {method === "A cuenta" && <p className="small muted" style={{ margin: 0 }}>Se va sin pagar: la cuenta del turno queda cerrada y lo que debe pasa a su cuenta corriente.</p>}
-      {needsAcct && !linked && <div className="field"><label htmlFor="ccph">Celular (para su cuenta corriente)</label><input id="ccph" className="input" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="2478 123456" /></div>}
+      {needsAcct && !identOk && <div className="identbox"><b>Para la cuenta corriente necesitamos sus datos</b>
+        <div className="grid2" style={{ gap: 8 }}><div className="field"><label htmlFor="ccnm">Nombre y apellido</label><input id="ccnm" className="input" value={name} onChange={e => setName(e.target.value)} placeholder="Ej: Juan Pérez" /></div>
+          <div className="field"><label htmlFor="ccph">Celular</label><input id="ccph" className="input" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="2478 123456" /></div></div>
+        {name && !fullName(name) && <span className="small" style={{ color: "var(--bad)" }}>Falta el apellido.</span>}</div>}
 
       <button className="btn block" style={{ padding: 16, fontSize: 17 }} disabled={!can}
-        onClick={() => onPay({ method, received: method === "Efectivo" && recv !== "" ? num(recv) : undefined, changeToCredit: credit, includeOwn: inclOwn, includeDebt: inclDebt && method !== "A cuenta" && method !== "Saldo", takes: Object.entries(amt).filter(([, v]) => v > 0).map(([lineId, amount]) => ({ lineId, amount })), phone: phone || undefined })}>{label}</button>
+        onClick={() => onPay({ method, received: method === "Efectivo" && recv !== "" ? num(recv) : undefined, changeToCredit: credit, restToAccount: rest && change < 0, includeOwn: inclOwn, includeDebt: inclDebt && method !== "A cuenta" && method !== "Saldo", takes: Object.entries(amt).filter(([, v]) => v > 0).map(([lineId, amount]) => ({ lineId, amount })), phone: identOk ? undefined : phone, name: identOk ? undefined : name })}>{label}</button>
       {pool.length > 0 && <p className="small muted" style={{ margin: 0 }}>Lo que no toques queda en la mesa para los demás.</p>}
     </div></div>;
 }

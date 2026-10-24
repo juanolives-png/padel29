@@ -1,5 +1,6 @@
 import { q, one } from "./db";
 import { getDay } from "./data";
+import { nowAR, toMin } from "./time";
 
 export const METHODS = ["Efectivo", "Transferencia", "QR Mercado Pago"] as const;
 export const SHORT: Record<string, string> = { Efectivo: "Efectivo", Transferencia: "Transferencia", "QR Mercado Pago": "QR MP" };
@@ -44,7 +45,9 @@ export async function getCajaDay(clubId: string, date: string) {
   const opening = ap ? ap.amount : prevClose ? prevClose.left_in_box : 0;
   const openingFrom = ap ? "manual" : prevClose ? `quedó del cierre del ${prevClose.date.slice(8)}/${prevClose.date.slice(5, 7)}` : "sin cierre anterior";
   const expected = opening + totals.cashIn - totals.cashOut;
-  const pending = day.filter(b => b.hasActivity && b.falta >= 1).map(b => ({ id: b.id, start: b.start, holder: b.holder_name, falta: b.falta }));
+  // turnos ya jugados (o empezados) que quedaron con plata sin cobrar
+  const n = nowAR(); const played = (start: string) => date < n.date || (date === n.date && toMin(start) <= toMin(n.time));
+  const pending = day.filter(b => b.falta >= 1 && (b.hasActivity || played(b.start))).map(b => ({ id: b.id, start: b.start, holder: b.holder_name, falta: b.falta }));
   // si hubo movimientos después de cerrar, avisamos
   const changed = close ? close.totals.in !== totals.in || close.totals.out !== totals.out || close.opening !== opening : false;
   return JSON.parse(JSON.stringify({ list, totals, opening, openingFrom, expected, close, changed, pending }));
