@@ -242,7 +242,16 @@ export async function saveWinner(tid: string, matchId: string, w: "A" | "B" | nu
 export async function updatePairs(tid: string, pairs: Pair[]) {
   await requireAdmin(); const t = await one("select * from tournament where id=$1", [tid]); if (!t) return err("Torneo inexistente.");
   const cfg = { ...t.config, pairs }; const fx = generate(t.format, cfg);
-  await q("update tournament set config=$2, fixture=$3, results='{\"scores\":{},\"winners\":{}}' where id=$1", [tid, JSON.stringify(cfg), JSON.stringify(fx)]);
+  // si solo cambió la disponibilidad (mismas parejas), los partidos son los mismos: se conservan los resultados
+  const same = JSON.stringify((t.config.pairs || []).map((p: Pair) => p.name)) === JSON.stringify(pairs.map(p => p.name));
+  await q(`update tournament set config=$2, fixture=$3${same ? "" : `, results='{"scores":{},"winners":{}}'`} where id=$1`, [tid, JSON.stringify(cfg), JSON.stringify(fx)]);
+  done(); revalidatePath("/torneos", "layout"); return ok(same ? "Cronograma rearmado" : "Cronograma rearmado (se borraron los resultados)");
+}
+/** Cambia horarios, canchas o duración: rearma el cronograma y conserva los resultados ya cargados */
+export async function updateTournamentConfig(tid: string, patch: Partial<TConfig>) {
+  await requireAdmin(); const t = await one("select * from tournament where id=$1", [tid]); if (!t) return err("Torneo inexistente.");
+  const cfg = { ...t.config, ...patch }; const fx = generate(t.format, cfg);
+  await q("update tournament set config=$2, fixture=$3 where id=$1", [tid, JSON.stringify(cfg), JSON.stringify(fx)]);
   done(); revalidatePath("/torneos", "layout"); return ok("Cronograma rearmado");
 }
 export async function deleteTournament(tid: string) { await requireAdmin(); await q("delete from tournament where id=$1", [tid]); done(); revalidatePath("/torneos", "layout"); redirect("/admin/torneos"); }
