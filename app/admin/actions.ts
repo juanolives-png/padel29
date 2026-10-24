@@ -15,10 +15,10 @@ const done = () => { revalidatePath("/admin", "layout"); };
 
 export async function login(_: unknown, fd: FormData) {
   if (String(fd.get("password") || "") !== (process.env.ADMIN_PASSWORD || "29padel")) return { msg: "Contraseña incorrecta." };
-  cookies().set(ADMIN_COOKIE, await adminToken(), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 30, path: "/" });
+  (await cookies()).set(ADMIN_COOKIE, await adminToken(), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 30, path: "/" });
   redirect("/admin");
 }
-export async function logout() { cookies().delete(ADMIN_COOKIE); redirect("/admin/login"); }
+export async function logout() { (await cookies()).delete(ADMIN_COOKIE); redirect("/admin/login"); }
 
 /* ---------- turnos ---------- */
 export async function loadBooking(id: string) { await requireAdmin(); return getBookingDetail(id); }

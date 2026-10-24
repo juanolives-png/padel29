@@ -1,9 +1,10 @@
 "use client";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { login } from "../actions";
 function Btn() { const { pending } = useFormStatus(); return <button className="btn block" disabled={pending}>{pending ? "Entrando…" : "Entrar"}</button>; }
 export default function Login() {
-  const [st, act] = useFormState(login, { msg: "" });
+  const [st, act] = useActionState(login, { msg: "" });
   return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "var(--pri)", padding: 16 }}>
     <form action={act} className="modal" style={{ width: "min(380px,100%)" }}>
       <span className="eyebrow">Panel del club</span><h3>Ingresar</h3>

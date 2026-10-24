@@ -3,7 +3,8 @@ import { q } from "@/lib/db";
 import { addDays, dayLabel, nowAR, fmt } from "@/lib/time";
 import AdminGrid from "./AdminGrid";
 export const metadata = { title: "Turnos" };
-export default async function Turnos({ searchParams }: { searchParams: { d?: string } }) {
+export default async function Turnos(props: { searchParams: Promise<{ d?: string }> }) {
+  const searchParams = await props.searchParams;
   const club = await getClub(); const n = nowAR();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.d || "") ? searchParams.d! : n.date;
   const [courts, day, products, bar] = await Promise.all([getCourts(club.id), getDay(club.id, date), getProducts(club.id),

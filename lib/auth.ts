@@ -5,5 +5,5 @@ export async function adminToken() {
   const h = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
-export async function isAdmin() { return cookies().get(ADMIN_COOKIE)?.value === (await adminToken()); }
+export async function isAdmin() { return (await cookies()).get(ADMIN_COOKIE)?.value === (await adminToken()); }
 export async function requireAdmin() { if (!(await isAdmin())) throw new Error("Sesión vencida: volvé a ingresar."); }
