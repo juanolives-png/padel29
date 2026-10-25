@@ -8,7 +8,7 @@ export default async function Turnos(props: { searchParams: Promise<{ d?: string
   const club = await getClub(); const n = nowAR();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.d || "") ? searchParams.d! : n.date;
   const [courts, day, products, bar] = await Promise.all([getCourts(club.id), getDay(club.id, date), getProducts(club.id),
-    q<{ s: number }>("select coalesce(sum(c.qty*c.unit_price),0)::int as s from consumption c join booking b on b.id=c.booking_id where b.club_id=$1 and b.date=$2 and b.status<>'cancelled'", [club.id, date])]);
+    q<{ s: number }>("select coalesce(sum(c.qty*c.unit_price),0)::int as s from consumption c join booking b on b.id=c.booking_id where b.club_id=$1 and b.date=$2 and b.status<>'cancelled' and b.kind='turno'", [club.id, date])]);
   const total = club.open_times.length * courts.length, used = day.length;
   const falta = day.reduce((s, b) => s + (b.hasActivity || b.sena_paid ? b.falta : 0), 0), open = day.filter(b => b.hasActivity && b.falta >= 1).length;
   const days = Array.from({ length: 10 }, (_, i) => addDays(n.date, i - 2));

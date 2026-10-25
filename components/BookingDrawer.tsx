@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import ProductPicker, { type P } from "./ProductPicker";
 import PayModal from "./PayModal";
 import ToAccountModal from "./ToAccountModal";
-import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, cobrar as cobrarAction, splitPool, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass } from "@/app/admin/actions";
+import { addConsumption, cancelBooking, linkPlayer, loadBooking, payAll, cobrar as cobrarAction, splitPool, removeConsumption, renamePlayer, setSena, undoPass, undoPayment, applyPass, addTabPerson } from "@/app/admin/actions";
 import { fmt, dayLabel } from "@/lib/time";
 import { passFor } from "@/lib/club29";
 
@@ -27,7 +27,7 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
   const run = (fn: () => Promise<{ ok: boolean; msg: string }>) => start(async () => { const r = await fn(); toast(r.msg, !r.ok); await reload(); router.refresh(); });
   const shell = (body: React.ReactNode) => <div className="overlay sheet" onClick={e => { if (e.target === e.currentTarget) onClose(); }}><div className="sheet-box" role="dialog" aria-modal="true" aria-label="Cuenta del turno">{body}</div></div>;
   if (!d) return shell(<p className="muted" style={{ padding: 24 }}>Cargando…</p>);
-  const b = d.booking, a = d.acct, n = d.players.length;
+  const b = d.booking, a = d.acct, n = d.players.length, mesa = b.kind === "mesa";
   const subFor = (pid: string | null) => d.subs.find((s: any) => s.player_id === pid);
   const waTxt = `Cuenta del turno · ${b.court_name} ${dayLabel(b.date)} ${b.start}\n` + d.players.map((p: any, i: number) => `• ${p.name}: ${a.due[i] > 0 ? "debe " + fmt(a.due[i]) : "al día"}`).join("\n") + (a.pool > 0 ? `\n• En la mesa, sin repartir: ${fmt(a.pool)}` : "") + "\nCada uno puede pagar su parte en el club o por transferencia.";
   const forTxt = target.length === 0 ? "Queda en la mesa: al cobrar elegís quién lo paga." : target.length === 1 ? `Va a la cuenta de ${d.players.find((p: any) => p.idx === target[0])?.name}.` : `Se divide entre ${target.length}.`;
@@ -37,8 +37,8 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
   return shell(<>
     <header className="sheet-head">
       <div style={{ minWidth: 0 }}>
-        <h2>{b.court_name} · {b.start}</h2>
-        <p>{dayLabel(b.date)} · {KIND[b.court_kind]} · {SRC[b.source] || b.source} · reservó {b.holder_name}</p>
+        {mesa ? <><h2>🍺 {b.tab_name}</h2><p>Cuenta del bar · abierta {dayLabel(b.date).toLowerCase()} a las {b.start}</p></>
+          : <><h2>{b.court_name} · {b.start}</h2><p>{dayLabel(b.date)} · {KIND[b.court_kind]} · {SRC[b.source] || b.source} · reservó {b.holder_name}</p></>}
       </div>
       <div className="row" style={{ gap: 8 }}>
         {a.settled && <span className="pill ok" style={{ fontSize: 13, padding: "5px 12px" }}>Cuenta cerrada ✓</span>}
@@ -59,12 +59,12 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
 
         {a.pool > 0 && <div className="mesa">
           <div className="between" style={{ gap: 8 }}><span><b>🧺 En la mesa · {fmt(a.pool)}</b><small>Todavía no es de nadie. Al cobrarle a alguien, tocás lo que paga.</small></span>
-            <button className="btn sm ghost" disabled={pending} onClick={() => run(() => splitPool(id))}>Repartir entre {owing.length && owing.length < n ? `los ${owing.length} que faltan` : `los ${n}`}</button></div>
+            <button className="btn sm ghost" disabled={pending} onClick={() => run(() => splitPool(id))}>{n === 1 ? `Pasar todo a ${d.players[0].name}` : `Repartir entre ${owing.length && owing.length < n ? `los ${owing.length} que faltan` : `los ${n}`}`}</button></div>
           <div className="mesa-items">{a.poolLines.map((l: any) => <span key={l.id}>{l.emoji} {l.qty > 1 ? l.qty + " " : ""}{l.name}{l.taken > 0 ? ` · quedan ${fmt(l.left)}` : ""}</span>)}</div>
         </div>}
 
         <div className="players">{d.players.map((p: any, i: number) => {
-          const due = a.due[i], sub = subFor(p.player_id);
+          const due = a.due[i], sub = mesa ? null : subFor(p.player_id);
           const pf = sub && !(p.pass_used > 0) ? passFor({ passesLeft: sub.passes_left, specialLeft: sub.special_left, earlyLeft: sub.early_left, inviteLeft: sub.invite_left, expiresAt: sub.expires_at, plan: { earlyUses: sub.early_uses, canTransfer: sub.can_transfer } }, b.date, b.start, b.booked_on) : null;
           const others = d.players.filter((x: any, j: number) => j !== i && !(x.pass_used > 0));
           return <div key={p.idx} className={"pcard" + (due <= 0 ? " ok" : "")}>
@@ -87,23 +87,24 @@ export default function BookingDrawer({ id, products, senaDefault, onClose, toas
           </div>; })}</div>
 
         {a.falta > 0 && <button className="btn dark block" style={{ padding: 16, fontSize: 16 }} onClick={() => setCo("all")} disabled={pending}>Cobrar todo · {fmt(a.falta)}</button>}
+        {mesa && <button className="btn ghost sm" style={{ justifySelf: "start" }} disabled={pending} onClick={() => run(() => addTabPerson(id, ""))}>+ Sumar persona a la mesa (para cobrar por separado)</button>}
         {a.falta > 0 && <button className="btn ghost block" onClick={() => setToAcc(true)} disabled={pending}>📝 Cerrar cuenta y pasar lo que deben a cuenta corriente</button>}
 
         <details className="more">
-          <summary>Seña, movimientos y cancelación</summary>
+          <summary>{mesa ? "Movimientos y borrar mesa" : "Seña, movimientos y cancelación"}</summary>
           <div className="stack" style={{ gap: 12, marginTop: 12 }}>
-            <div className="row" style={{ justifyContent: "space-between" }}>
+            {!mesa && <div className="row" style={{ justifyContent: "space-between" }}>
               {b.sena_paid > 0 ? <><span className="small">Seña <b>{fmt(b.sena_paid)}</b> de {d.players[0]?.name}. Se descuenta:</span>
                 <div className="chips"><button className="chip" aria-pressed={b.sena_mode === "total"} onClick={() => run(() => setSena(id, b.sena_paid, "total"))}>entre todos</button><button className="chip" aria-pressed={b.sena_mode === "reserva"} onClick={() => run(() => setSena(id, b.sena_paid, "reserva"))}>a {d.players[0]?.name}</button></div></>
                 : <><span className="small muted">Sin seña.</span><div className="row" style={{ gap: 6 }}><select className="input" style={{ width: "auto", padding: "6px 8px" }} value={method} onChange={e => setMethod(e.target.value)} aria-label="Medio de la seña">{METHODS.map(m => <option key={m}>{m}</option>)}</select><button className="btn sm ghost" onClick={() => run(() => setSena(id, senaDefault, "total", method))}>Registrar seña de {fmt(senaDefault)}</button></div></>}
-            </div>
+            </div>}
             {(b.sena_paid > 0 || d.payments.length > 0) && <div className="moves">
               {b.sena_paid > 0 && <span><b>Seña {fmt(b.sena_paid)}</b> · {d.players[0]?.name}</span>}
               {d.payments.map((p: any) => <span key={p.id} className="between"><span>{new Date(p.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" })} · <b>{d.players.find((x: any) => x.idx === p.player_idx)?.name} pagó {fmt(p.amount)}</b> · {p.method}</span><button className="linkbtn" onClick={() => run(() => undoPayment(p.id))}>anular</button></span>)}
             </div>}
             {a.passCover > 0 && <p className="note" style={{ margin: 0 }}>{fmt(a.passCover)} de cancha cubiertos con pases de 29club.</p>}
-            {confirmCancel ? <div className="row"><b className="small">¿Cancelar el turno? Con menos de 12 h se pierden los pases usados.</b><button className="btn danger sm" onClick={() => start(async () => { const r = await cancelBooking(id); toast(r.msg, !r.ok); router.refresh(); onClose(); })}>Sí, cancelar</button><button className="btn ghost sm" onClick={() => setConfirmCancel(false)}>No</button></div>
-              : <button className="btn danger sm" style={{ justifySelf: "start" }} onClick={() => setConfirmCancel(true)}>Cancelar turno</button>}
+            {confirmCancel ? <div className="row"><b className="small">{mesa ? "¿Borrar la mesa? Solo se puede si no tiene consumos ni pagos." : "¿Cancelar el turno? Con menos de 12 h se pierden los pases usados."}</b><button className="btn danger sm" onClick={() => start(async () => { const r = await cancelBooking(id); toast(r.msg, !r.ok); if (r.ok) { router.refresh(); onClose(); } else setConfirmCancel(false); })}>Sí, cancelar</button><button className="btn ghost sm" onClick={() => setConfirmCancel(false)}>No</button></div>
+              : <button className="btn danger sm" style={{ justifySelf: "start" }} onClick={() => setConfirmCancel(true)}>{mesa ? "Borrar mesa" : "Cancelar turno"}</button>}
           </div>
         </details>
       </section>

@@ -4,7 +4,7 @@ import { nowAR, toMin } from "./time";
 
 export const METHODS = ["Efectivo", "Transferencia", "QR Mercado Pago"] as const;
 export const SHORT: Record<string, string> = { Efectivo: "Efectivo", Transferencia: "Transferencia", "QR Mercado Pago": "QR MP" };
-export const CONCEPTS: Record<string, string> = { compra: "Compras de mercadería", cuenta: "Cuentas corrientes", turno: "Turnos", bar: "Bar (mostrador)", plan: "Planes 29club", sena: "Señas", ingreso: "Otros ingresos", gasto: "Gastos", retiro: "Retiros" };
+export const CONCEPTS: Record<string, string> = { mesa: "Mesas del bar", compra: "Compras de mercadería", cuenta: "Cuentas corrientes", turno: "Turnos", bar: "Bar (mostrador)", plan: "Planes 29club", sena: "Señas", ingreso: "Otros ingresos", gasto: "Gastos", retiro: "Retiros" };
 const DAY = "(created_at at time zone 'America/Argentina/Buenos_Aires')::date = $2::date";
 
 export type Move = { id: string; at: string; concept: string; detail: string; method: string; amount: number; sign: 1 | -1; ref?: string; removable?: boolean };
@@ -14,8 +14,8 @@ export type Totals = { in: number; out: number; byMethod: Record<string, { in: n
 /** Todo lo que entró y salió de la caja en un día (hora Argentina) */
 export async function getCajaDay(clubId: string, date: string) {
   const [pays, sales, plans, senas, moves, accts, buys, close, prevClose, day] = await Promise.all([
-    q(`select p.id, p.amount, p.method, p.created_at, bp.name, c.name as court, b.start, b.id as booking_id from payment p join booking b on b.id=p.booking_id
-       join court c on c.id=b.court_id left join booking_player bp on bp.booking_id=b.id and bp.idx=p.player_idx where b.club_id=$1 and p.method = any($3) and (p.created_at at time zone 'America/Argentina/Buenos_Aires')::date = $2::date`, [clubId, date, METHODS]),
+    q(`select p.id, p.amount, p.method, p.created_at, bp.name, coalesce(c.name, '🍺 ' || b.tab_name) as court, b.kind, b.start, b.id as booking_id from payment p join booking b on b.id=p.booking_id
+       left join court c on c.id=b.court_id left join booking_player bp on bp.booking_id=b.id and bp.idx=p.player_idx where b.club_id=$1 and p.method = any($3) and (p.created_at at time zone 'America/Argentina/Buenos_Aires')::date = $2::date`, [clubId, date, METHODS]),
     q(`select id, total, method, items, created_at from counter_sale where club_id=$1 and ${DAY}`, [clubId, date]),
     q(`select s.id, s.price_paid, s.method, s.started_at as created_at, pl.name as plan, p.name from subscription s join plan pl on pl.id=s.plan_id join player p on p.id=s.player_id
        where p.club_id=$1 and (s.started_at at time zone 'America/Argentina/Buenos_Aires')::date = $2::date`, [clubId, date]),
@@ -28,10 +28,10 @@ export async function getCajaDay(clubId: string, date: string) {
        where e.club_id=$1 and e.from_cash and ${DAY.replace("created_at", "e.created_at")}`, [clubId, date]),
     one<Close>("select * from cash_close where club_id=$1 and date=$2", [clubId, date]),
     one<Close>("select * from cash_close where club_id=$1 and date < $2 order by date desc limit 1", [clubId, date]),
-    getDay(clubId, date)]);
+    getDay(clubId, date, "all")]);
 
   const list: Move[] = [
-    ...pays.map(p => ({ id: p.id, at: p.created_at, concept: "turno", detail: `${p.court} ${p.start} · ${p.name || "Jugador"}`, method: p.method, amount: p.amount, sign: 1 as const, ref: p.booking_id })),
+    ...pays.map(p => ({ id: p.id, at: p.created_at, concept: p.kind === "mesa" ? "mesa" : "turno", detail: `${p.court} ${p.start} · ${p.name || "Jugador"}`, method: p.method, amount: p.amount, sign: 1 as const, ref: p.booking_id })),
     ...sales.map(s => ({ id: s.id, at: s.created_at, concept: "bar", detail: (s.items as { name: string; qty: number }[]).map(i => (i.qty > 1 ? i.qty + " " : "") + i.name).join(", "), method: s.method, amount: s.total, sign: 1 as const })),
     ...plans.map(s => ({ id: s.id, at: s.created_at, concept: "plan", detail: `Plan ${s.plan} · ${s.name}`, method: s.method, amount: s.price_paid, sign: 1 as const })),
     ...senas.map(b => ({ id: b.id, at: b.created_at, concept: "sena", detail: `${b.court} ${b.start}${b.date !== date ? " del " + b.date.slice(8) + "/" + b.date.slice(5, 7) : ""} · ${b.holder_name}`, method: b.sena_method, amount: b.sena_paid, sign: 1 as const, ref: b.id })),
@@ -47,7 +47,7 @@ export async function getCajaDay(clubId: string, date: string) {
   const expected = opening + totals.cashIn - totals.cashOut;
   // turnos ya jugados (o empezados) que quedaron con plata sin cobrar
   const n = nowAR(); const played = (start: string) => date < n.date || (date === n.date && toMin(start) <= toMin(n.time));
-  const pending = day.filter(b => b.falta >= 1 && (b.hasActivity || played(b.start))).map(b => ({ id: b.id, start: b.start, holder: b.holder_name, falta: b.falta }));
+  const pending = day.filter(b => b.falta >= 1 && (b.hasActivity || played(b.start))).map(b => ({ id: b.id, start: b.start, holder: (b.kind === "mesa" ? "🍺 " : "") + b.holder_name, falta: b.falta }));
   // si hubo movimientos después de cerrar, avisamos
   const changed = close ? close.totals.in !== totals.in || close.totals.out !== totals.out || close.opening !== opening : false;
   return JSON.parse(JSON.stringify({ list, totals, opening, openingFrom, expected, close, changed, pending }));

@@ -9,7 +9,7 @@ import { fmt } from "@/lib/time";
 const METHODS = ["Efectivo", "Transferencia", "QR Mercado Pago"];
 const SHORT: Record<string, string> = { Efectivo: "Efectivo", Transferencia: "Transferencia", "QR Mercado Pago": "QR Mercado Pago" };
 const ICON: Record<string, string> = { Efectivo: "💵", Transferencia: "🏦", "QR Mercado Pago": "📱" };
-const CONCEPT: Record<string, [string, string]> = { compra: ["Compra mercadería", "📦"], cuenta: ["Cuenta corriente", "👛"], turno: ["Turno", "🎾"], bar: ["Bar", "🥤"], plan: ["29club", "⭐"], sena: ["Seña", "📌"], ingreso: ["Ingreso", "➕"], gasto: ["Gasto", "🧾"], retiro: ["Retiro", "↩️"] };
+const CONCEPT: Record<string, [string, string]> = { mesa: ["Mesa bar", "🍺"], compra: ["Compra mercadería", "📦"], cuenta: ["Cuenta corriente", "👛"], turno: ["Turno", "🎾"], bar: ["Bar", "🥤"], plan: ["29club", "⭐"], sena: ["Seña", "📌"], ingreso: ["Ingreso", "➕"], gasto: ["Gasto", "🧾"], retiro: ["Retiro", "↩️"] };
 const BILLS = [20000, 10000, 2000, 1000, 500, 200, 100];
 const hm = (iso: string) => new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" });
 const num = (s: string) => Number(String(s).replace(/\D/g, "")) || 0;

@@ -228,3 +228,9 @@ create table if not exists expense (
   created_at timestamptz not null default now()
 );
 create index if not exists expense_day on expense (club_id, date);
+
+-- mesas del bar (cuentas abiertas sin cancha): se guardan como booking de tipo 'mesa'
+alter table booking alter column court_id drop not null;
+alter table booking add column if not exists kind text not null default 'turno';
+alter table booking add column if not exists tab_name text;
+create index if not exists booking_kind on booking (club_id, kind, status);

@@ -19,10 +19,14 @@ export const getCourts = (clubId: string) => q<Court>("select id,name,kind,ord f
 export const getProducts = (clubId: string, all = false) => q<Product>(`select * from product where club_id=$1 ${all ? "" : "and active"} order by category, name`, [clubId]);
 export const getPlans = (clubId: string) => q<Plan>("select * from plan where club_id=$1 order by ord", [clubId]);
 
-export type SlotBooking = { id: string; court_id: string; start: string; source: string; status: string; holder_name: string; sena_paid: number; falta: number; settled: boolean; nPlayers: number; okPlayers: number; hasActivity: boolean; passes: number };
+export type SlotBooking = { id: string; court_id: string; kind: string; tab_name: string | null; date: string; start: string; source: string; status: string; holder_name: string; sena_paid: number; falta: number; settled: boolean; nPlayers: number; okPlayers: number; hasActivity: boolean; passes: number };
 /** Turnos de un día con el estado de su cuenta, para la grilla del panel */
-export async function getDay(clubId: string, date: string): Promise<SlotBooking[]> {
-  const bs = await q("select * from booking where club_id=$1 and date=$2 and status<>'cancelled'", [clubId, date]);
+export async function getDay(clubId: string, date: string, kind: "turno" | "mesa" | "all" = "turno"): Promise<SlotBooking[]> {
+  const bs = await q(`select * from booking where club_id=$1 and date=$2 and status<>'cancelled' ${kind === "all" ? "" : "and kind=$3"}`, kind === "all" ? [clubId, date] : [clubId, date, kind]);
+  return slots(bs);
+}
+/** Estado de cuenta de una lista de turnos o mesas */
+async function slots(bs: any[]): Promise<SlotBooking[]> {
   if (!bs.length) return [];
   const ids = bs.map(b => b.id);
   const [pls, lines, pays] = await Promise.all([
@@ -35,14 +39,20 @@ export async function getDay(clubId: string, date: string): Promise<SlotBooking[
       lines: lines.filter(l => l.booking_id === b.id).map(l => ({ id: l.id, qty: l.qty, unitPrice: l.unit_price, playerIdx: l.player_idx, name: l.name, emoji: l.emoji, shares: l.shares })),
       payments: pays.filter(p => p.booking_id === b.id).map(p => ({ playerIdx: p.player_idx, amount: p.amount })) });
     const bl = lines.some(l => l.booking_id === b.id), bp = pays.some(p => p.booking_id === b.id);
-    return { id: b.id, court_id: b.court_id, start: b.start, source: b.source, status: b.status, holder_name: b.holder_name, sena_paid: b.sena_paid, falta: a.falta, settled: a.settled,
+    return { id: b.id, court_id: b.court_id, kind: b.kind, tab_name: b.tab_name, date: b.date, start: b.start, source: b.source, status: b.status, holder_name: b.holder_name, sena_paid: b.sena_paid, falta: a.falta, settled: a.settled,
       nPlayers: a.players.length, okPlayers: a.due.filter(d => d <= 0).length, hasActivity: bl || bp || a.passCover > 0, passes: a.players.filter(p => p.passUsed > 0).length };
   });
 }
 
+/** Mesas del bar abiertas: todavía deben algo o no tienen consumos */
+export async function getTabs(clubId: string) {
+  const bs = await q("select * from booking where club_id=$1 and kind='mesa' and status<>'cancelled' and status<>'closed' order by created_at", [clubId]);
+  return (await slots(bs)).filter(t => !t.settled || !t.hasActivity);
+}
+
 export type BookingDetail = Awaited<ReturnType<typeof getBookingDetail>>;
 export async function getBookingDetail(id: string) {
-  const b = await one("select b.*, c.name as court_name, c.kind as court_kind from booking b join court c on c.id=b.court_id where b.id=$1", [id]);
+  const b = await one("select b.*, coalesce(c.name, b.tab_name) as court_name, c.kind as court_kind from booking b left join court c on c.id=b.court_id where b.id=$1", [id]);
   if (!b) return null;
   const [players, lines, payments] = await Promise.all([
     q("select bp.idx, bp.name, bp.player_id, bp.pass_used, bp.pass_kind, bp.pass_sub_id, p.phone, p.name as full_name from booking_player bp left join player p on p.id=bp.player_id where booking_id=$1 order by idx", [id]),

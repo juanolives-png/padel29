@@ -23,7 +23,7 @@ export default function VentasClient({ products, open, kpi, sena }: { products: 
   const list = filter === "low" ? low : products;
   return <div className="stack" style={{ gap: 18 }}>
     <div className="grid4">
-      <div className="card kpi"><div className="l">Vendido hoy</div><div className="v">{fmt(kpi.turnos + kpi.mostrador)}</div><div className="small muted">{fmt(kpi.mostrador)} mostrador · {fmt(kpi.turnos)} en turnos</div></div>
+      <div className="card kpi"><div className="l">Vendido hoy</div><div className="v">{fmt(kpi.turnos + kpi.mostrador)}</div><div className="small muted">{fmt(kpi.mostrador)} mostrador · {fmt(kpi.turnos)} en cuentas</div></div>
       <div className="card kpi"><div className="l">Cuentas abiertas</div><div className="v">{open.length}</div><div className="small muted">{fmt(open.reduce((s, b) => s + b.falta, 0))} por cobrar</div></div>
       <div className="card kpi"><div className="l">Lo más vendido</div><div className="v" style={{ fontSize: 24 }}>{top ? `${top.emoji} ${top.name}` : "—"}</div><div className="small muted">{top ? `${top.sold} unidades` : ""}</div></div>
       <button className="card kpi" style={{ textAlign: "left", borderColor: low.length ? "#f0d29b" : undefined }} onClick={() => setFilter(low.length ? "low" : "all")}><div className="l">Stock bajo</div><div className="v" style={{ color: low.length ? "var(--warn)" : undefined }}>{low.length}</div><div className="small muted">{low.length ? "Ver cuáles →" : "Todo en orden"}{stockValue ? ` · stock vale ${fmt(stockValue)} al costo` : ""}</div></button>

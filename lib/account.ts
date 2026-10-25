@@ -18,7 +18,7 @@ export function computeAccount(b: AcctInput) {
   players.forEach((p, i) => {
     const share = courtBase / n;
     if (p.passUsed > 0) det[i].push([`Cancha ${frac(1, n)} · ${p.passUsed === 0.5 ? "medio pase" : "1 pase"} 29club`, 0]);
-    else { owe[i] += share; det[i].push([`Cancha ${frac(1, n)}`, share]); }
+    else if (share > 0) { owe[i] += share; det[i].push([`Cancha ${frac(1, n)}`, share]); }
   });
   // consumos de la mesa: sin dueño; cada jugador se lleva una parte (shares) al pagar
   const poolLines = b.lines.filter(l => !l.playerIdx.length).map(l => {

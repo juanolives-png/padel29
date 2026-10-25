@@ -55,7 +55,8 @@ export default function PayModal({ title, own, ownLabel, pool, balance, linked, 
       {bal < 0 && allowAccount && method !== "A cuenta" && method !== "Saldo" && <label className={"co-own" + (inclDebt ? " on" : "")}><input type="checkbox" checked={inclDebt} onChange={e => setInclDebt(e.target.checked)} />
         <span><b>Lo que debe de antes</b><small>Se descuenta de su cuenta corriente</small></span><b>{fmt(-bal)}</b></label>}
 
-      {pool.length > 0 && <><div className="lbl">De la mesa · tocá lo que paga</div>
+      {pool.length > 0 && <><div className="between"><span className="lbl">De la mesa · tocá lo que paga</span>
+        {pool.length > 1 && <button className="linkbtn" onClick={() => setAmt(items >= pool.reduce((x, l) => x + l.left, 0) - 0.5 ? {} : Object.fromEntries(pool.map(l => [l.id, l.left])))}>{items >= pool.reduce((x, l) => x + l.left, 0) - 0.5 ? "ninguno" : "todo lo de la mesa"}</button>}</div>
         <div className="co-items">{pool.map(l => { const a = amt[l.id] || 0, u = units(l);
           return <div key={l.id} className={"co-item2" + (a ? " on" : "")}>
             <div className="co-top">

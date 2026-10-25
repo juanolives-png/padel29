@@ -8,7 +8,7 @@ export default async function Home() {
   const club = await getClub();
   const [courts, plans, tours] = await Promise.all([getCourts(club.id), getPlans(club.id), q("select id,name,format,category,config from tournament where club_id=$1 order by created_at desc limit 3", [club.id])]);
   const n = nowAR();
-  const taken = await q<{ c: number }>("select count(*)::int as c from booking where club_id=$1 and date=$2 and status<>'cancelled' and start >= $3", [club.id, n.date, n.time]);
+  const taken = await q<{ c: number }>("select count(*)::int as c from booking where club_id=$1 and date=$2 and status<>'cancelled' and kind='turno' and start >= $3", [club.id, n.date, n.time]);
   const remainingSlots = club.open_times.filter(t => toMin(t) >= toMin(n.time)).length * courts.length - (taken[0]?.c || 0);
   const oro = plans.find(p => p.name === "Oro");
   return (

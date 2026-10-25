@@ -34,7 +34,7 @@ export async function summary(clubId: string, from: string, toReq: string): Prom
     one<{ n: number }>("select count(*)::int as n from court where club_id=$1 and active", [clubId]),
     one(`select coalesce(sum(b.court_price * (x.np - x.npass)::numeric / nullif(x.np,0)),0)::float as cancha, count(*)::int as turnos, coalesce(sum(x.npass),0)::int as pases, coalesce(sum(x.np),0)::int as jug
       from booking b join lateral (select count(*)::int np, count(*) filter (where pass_used>0)::int npass from booking_player where booking_id=b.id) x on true
-      where b.club_id=$1 and b.status<>'cancelled' and b.date between $2 and $3`, [clubId, from, to]),
+      where b.club_id=$1 and b.status<>'cancelled' and b.kind='turno' and b.date between $2 and $3`, [clubId, from, to]),
     one(`select coalesce(sum(c.qty*c.unit_price),0)::float as venta, coalesce(sum(c.qty*coalesce(c.unit_cost,p.cost,0)),0)::float as costo,
       coalesce(sum(case when coalesce(c.unit_cost,p.cost) is null then c.qty*c.unit_price else 0 end),0)::float as sin_costo
       from consumption c join booking b on b.id=c.booking_id join product p on p.id=c.product_id where b.club_id=$1 and b.status<>'cancelled' and b.date between $2 and $3`, [clubId, from, to]),
@@ -94,7 +94,7 @@ export async function monthly(clubId: string, n = 6) {
 export async function baseline(clubId: string) {
   const today = nowAR().date;
   // si el club arrancó hace menos de 90 días, se promedia desde el primer turno (si no, la ocupación sale baja)
-  const first = await one<{ d: string | null }>("select min(date) as d from booking where club_id=$1 and status<>'cancelled'", [clubId]);
+  const first = await one<{ d: string | null }>("select min(date) as d from booking where club_id=$1 and status<>'cancelled' and kind='turno'", [clubId]);
   const from = first?.d && first.d > addDays(today, -89) ? first.d : addDays(today, -89);
   const [s, club, courts, fixed, cajaG] = await Promise.all([summary(clubId, from, today), one("select court_price, open_times, finance from club where id=$1", [clubId]),
     one<{ n: number }>("select count(*)::int as n from court where club_id=$1 and active", [clubId]),

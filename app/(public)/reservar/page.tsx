@@ -9,7 +9,7 @@ export default async function Reservar(props: { searchParams: Promise<{ d?: stri
   const club = await getClub(); const courts = await getCourts(club.id); const n = nowAR();
   const days = Array.from({ length: 8 }, (_, i) => addDays(n.date, i));
   const date = days.includes(searchParams.d || "") ? searchParams.d! : n.date;
-  const taken = await q<{ court_id: string; start: string }>("select court_id, start from booking where club_id=$1 and date=$2 and status<>'cancelled'", [club.id, date]);
+  const taken = await q<{ court_id: string; start: string }>("select court_id, start from booking where club_id=$1 and date=$2 and status<>'cancelled' and kind='turno'", [club.id, date]);
   const slots = club.open_times.filter(t => date > n.date || toMin(t) > toMin(n.time)).map(t => ({
     time: t, courts: courts.map(c => ({ id: c.id, name: c.name, kind: KIND_LABEL[c.kind], free: !taken.some(x => x.court_id === c.id && x.start === t) })) }));
   return (

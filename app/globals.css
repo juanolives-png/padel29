@@ -584,3 +584,15 @@ fieldset.tset legend { font-size: 12px; font-weight: 700; letter-spacing: .08em;
 .tacc.bad { border-color: #f0b7b2; background: #fff7f6; }
 .tacc small { color: var(--muted); font-size: 12.5px; }
 .tacc .amt { font-family: var(--f-head); font-size: 20px; }
+
+/* mesas del bar */
+.pos { grid-template-rows: auto auto minmax(0, 1fr); }
+.tabs-strip { display: flex; gap: 8px; align-items: center; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.tabs-strip .lbl { white-space: nowrap; margin-right: 2px; }
+.tabchip { display: inline-flex; flex-direction: column; align-items: flex-start; border: 1.5px solid var(--line); background: var(--surface); border-radius: 12px; padding: 6px 12px; white-space: nowrap; line-height: 1.2; }
+.tabchip b { font-size: 14px; }
+.tabchip span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tabchip.due { border-color: #f0dc8a; background: #fff7d6; }
+.tabchip.due span { color: #7a6416; font-weight: 700; }
+.tabchip.add { border-style: dashed; font-weight: 700; justify-content: center; align-self: stretch; }
+.tabchip:hover { border-color: var(--pri); }

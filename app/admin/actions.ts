@@ -43,6 +43,7 @@ export async function createManual(input: { date: string; start: string; courtId
 export async function cancelBooking(id: string) {
   await requireAdmin();
   const b = await one("select * from booking where id=$1", [id]); if (!b) return err("No encontré el turno.");
+  if (b.kind === "mesa") return deleteTab(id);
   const late = minutesUntil(b.date, b.start) < 12 * 60;
   await tx(async c => {
     const used = (await c.query("select * from booking_player where booking_id=$1 and pass_used>0", [id])).rows;
@@ -362,7 +363,7 @@ export async function counterSale(items: { productId: string; qty: number }[], m
 }
 export async function chargeToBooking(bookingId: string, items: { productId: string; qty: number }[], playerIdx: number[]) {
   await requireAdmin(); for (const it of items) { const r = await addConsumption(bookingId, it.productId, it.qty, playerIdx); if (!r.ok) return r; }
-  return ok("Cargado a la cuenta del turno");
+  return ok("Cargado a la cuenta");
 }
 export async function saveProduct(input: { id?: string; name: string; emoji: string; category: string; price: number; cost?: number | null; stock: number | null; active: boolean }) {
   await requireAdmin(); const club = await getClub();
@@ -593,4 +594,34 @@ export async function copyFixedExpenses(ym: string) {
     await q("insert into expense (club_id,date,category,detail,amount,method,fixed) values ($1,$2,$3,$4,$5,$6,true)", [club.id, `${ym}-${String(d).padStart(2, "0")}`, e.category, e.detail, e.amount, e.method]); n++;
   }
   revalidatePath("/admin/finanzas", "layout"); return n ? ok(`${n} gastos fijos copiados (revisá si cambió algún importe)`) : err("Ya estaban cargados.");
+}
+
+/* ---------- mesas del bar (cuentas sin cancha) ---------- */
+/** Abre una cuenta en el bar: para la gente que mira, espera o viene solo al bar */
+export async function openTab(input: { name: string; people?: number }) {
+  await requireAdmin(); const club = await getClub();
+  const name = input.name.trim(); if (name.length < 2) return { ok: false as const, msg: "Poné un nombre para la mesa (ej: Juan, Mesa 3).", id: "" };
+  const n = nowAR(); const k = Math.max(1, Math.min(8, Math.round(input.people || 1)));
+  const id = await tx(async c => {
+    const b = (await c.query(`insert into booking (club_id,court_id,date,start,source,holder_name,holder_phone,court_price,booked_on,kind,tab_name) values ($1,null,$2,$3,'bar',$4,'',0,$2,'mesa',$4) returning id`, [club.id, n.date, n.time, name])).rows[0].id;
+    for (let i = 0; i < k; i++) await c.query("insert into booking_player (booking_id,idx,name) values ($1,$2,$3)", [b, i, k === 1 ? name.split(" ")[0] : `${name.split(" ")[0]} ${i + 1}`]);
+    return b as string;
+  });
+  revalidatePath("/admin/bar", "layout"); return { ok: true as const, msg: `Mesa "${name}" abierta`, id };
+}
+/** Suma una persona a la mesa (para cobrar por separado) */
+export async function addTabPerson(bookingId: string, name: string) {
+  await requireAdmin();
+  const b = await one("select * from booking where id=$1 and kind='mesa'", [bookingId]); if (!b) return err("No es una mesa del bar.");
+  const m = await one<{ m: number }>("select coalesce(max(idx),-1)::int as m from booking_player where booking_id=$1", [bookingId]);
+  await q("insert into booking_player (booking_id,idx,name) values ($1,$2,$3)", [bookingId, m!.m + 1, name.trim() || `Persona ${m!.m + 2}`]);
+  done(); revalidatePath("/admin/bar", "layout"); return ok("Persona agregada");
+}
+/** Borra una mesa vacía (sin consumos ni pagos) */
+export async function deleteTab(bookingId: string) {
+  await requireAdmin();
+  const has = await one<{ n: number }>("select (select count(*) from consumption where booking_id=$1) + (select count(*) from payment where booking_id=$1) as n", [bookingId]);
+  if (Number(has?.n) > 0) return err("La mesa tiene consumos o pagos: cobrala o pasala a cuenta corriente.");
+  await q("update booking set status='cancelled' where id=$1 and kind='mesa'", [bookingId]);
+  revalidatePath("/admin/bar", "layout"); done(); return ok("Mesa borrada");
 }
